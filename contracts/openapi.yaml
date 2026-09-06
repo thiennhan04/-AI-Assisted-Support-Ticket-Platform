@@ -1,0 +1,402 @@
+openapi: 3.0.3
+info:
+  title: AI-Assisted Support Ticket Platform API
+  version: 1.0.0
+  description: External API contract. Internal service APIs are documented in service detail designs.
+servers:
+  - url: http://localhost:8080
+security:
+  - bearerAuth: []
+tags:
+  - name: Auth
+  - name: Tickets
+  - name: AI Features
+  - name: Knowledge
+paths:
+  /v1/auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/LoginRequest'}
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /v1/auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: refresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: {type: string, minLength: 32}
+      responses:
+        '200':
+          description: Rotated token pair
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TokenResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+  /v1/tickets:
+    post:
+      tags: [Tickets]
+      operationId: createTicket
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/CreateTicketRequest'}
+      responses:
+        '201':
+          description: Created; AI analysis is asynchronous
+          headers:
+            ETag:
+              schema: {type: string, example: '"0"'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Ticket'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    get:
+      tags: [Tickets]
+      operationId: listTickets
+      parameters:
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/TicketStatus'}}
+        - {name: priority, in: query, schema: {$ref: '#/components/schemas/Priority'}}
+        - {name: assigneeId, in: query, schema: {type: string, format: uuid}}
+        - {name: q, in: query, schema: {type: string, maxLength: 200}}
+        - {name: page, in: query, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 20}}
+      responses:
+        '200':
+          description: Page of authorized tickets
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TicketPage'}
+  /v1/tickets/{ticketId}:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    get:
+      tags: [Tickets]
+      operationId: getTicket
+      responses:
+        '200':
+          description: Ticket detail
+          headers:
+            ETag:
+              schema: {type: string, example: '"4"'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Ticket'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Tickets]
+      operationId: updateTicket
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema: {type: string, example: '"4"'}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UpdateTicketRequest'}
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Ticket'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
+  /v1/tickets/{ticketId}/comments:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [Tickets]
+      operationId: addComment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: {type: string, minLength: 1, maxLength: 10000}
+                internal: {type: boolean, default: false}
+      responses:
+        '201': {description: Comment created}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /v1/tickets/{ticketId}/ai-drafts:
+    parameters:
+      - $ref: '#/components/parameters/TicketId'
+    post:
+      tags: [AI Features]
+      operationId: requestAiDraft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                locale: {type: string, default: en}
+                tone: {type: string, enum: [PROFESSIONAL, FRIENDLY, CONCISE], default: PROFESSIONAL}
+      responses:
+        '202':
+          description: Draft job queued
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AiJobReference'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /v1/tickets/{ticketId}/ai-drafts/{draftId}/approve:
+    post:
+      tags: [AI Features]
+      operationId: approveAiDraft
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+        - name: draftId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [editedBody]
+              properties:
+                editedBody: {type: string, minLength: 1, maxLength: 10000}
+                internal: {type: boolean, default: false}
+      responses:
+        '201': {description: Approved text created as agent comment}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /v1/tickets/{ticketId}/ai-feedback:
+    post:
+      tags: [AI Features]
+      operationId: submitAiFeedback
+      parameters:
+        - $ref: '#/components/parameters/TicketId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetId, rating]
+              properties:
+                targetId: {type: string, format: uuid}
+                rating: {type: integer, minimum: 1, maximum: 5}
+                reason: {type: string, maxLength: 1000}
+      responses:
+        '204': {description: Feedback accepted}
+  /v1/knowledge/documents/uploads:
+    post:
+      tags: [Knowledge]
+      operationId: createDocumentUpload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, fileName, mimeType, sizeBytes]
+              properties:
+                title: {type: string, minLength: 1, maxLength: 300}
+                fileName: {type: string, minLength: 1, maxLength: 255}
+                mimeType: {type: string, enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain]}
+                sizeBytes: {type: integer, minimum: 1, maximum: 26214400}
+                visibility: {type: string, enum: [TENANT, AGENTS_ONLY, RESTRICTED], default: AGENTS_ONLY}
+                tags: {type: array, maxItems: 20, items: {type: string, maxLength: 50}}
+      responses:
+        '201':
+          description: Upload reservation
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [documentId, uploadUrl, expiresAt]
+                properties:
+                  documentId: {type: string, format: uuid}
+                  uploadUrl: {type: string, format: uri}
+                  expiresAt: {type: string, format: date-time}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /v1/knowledge/documents/{documentId}/complete:
+    post:
+      tags: [Knowledge]
+      operationId: completeDocumentUpload
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sha256]
+              properties:
+                sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
+      responses:
+        '202': {description: Ingestion queued}
+        '409': {$ref: '#/components/responses/Conflict'}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    TicketId:
+      name: ticketId
+      in: path
+      required: true
+      schema: {type: string, format: uuid}
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: {type: string, format: email, maxLength: 254}
+        password: {type: string, minLength: 8, maxLength: 128}
+    TokenResponse:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn]
+      properties:
+        accessToken: {type: string}
+        refreshToken: {type: string}
+        tokenType: {type: string, example: Bearer}
+        expiresIn: {type: integer, example: 900}
+    CreateTicketRequest:
+      type: object
+      required: [subject, description]
+      properties:
+        subject: {type: string, minLength: 3, maxLength: 300}
+        description: {type: string, minLength: 10, maxLength: 20000}
+        priority: {$ref: '#/components/schemas/Priority'}
+    UpdateTicketRequest:
+      type: object
+      minProperties: 1
+      properties:
+        subject: {type: string, minLength: 3, maxLength: 300}
+        description: {type: string, minLength: 10, maxLength: 20000}
+        status: {$ref: '#/components/schemas/TicketStatus'}
+        priority: {$ref: '#/components/schemas/Priority'}
+        category: {$ref: '#/components/schemas/Category'}
+        assigneeId: {type: string, format: uuid, nullable: true}
+    Ticket:
+      type: object
+      required: [id, number, subject, description, priority, status, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        number: {type: string, example: SUP-00001234}
+        subject: {type: string}
+        description: {type: string}
+        category: {$ref: '#/components/schemas/Category'}
+        priority: {$ref: '#/components/schemas/Priority'}
+        status: {$ref: '#/components/schemas/TicketStatus'}
+        requesterId: {type: string, format: uuid}
+        assigneeId: {type: string, format: uuid, nullable: true}
+        aiAnalysis: {$ref: '#/components/schemas/AiAnalysis'}
+        version: {type: integer, format: int64}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    AiAnalysis:
+      type: object
+      properties:
+        status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]}
+        summary: {type: string, nullable: true}
+        suggestedCategory: {$ref: '#/components/schemas/Category'}
+        suggestedPriority: {$ref: '#/components/schemas/Priority'}
+        generatedAt: {type: string, format: date-time, nullable: true}
+    AiJobReference:
+      type: object
+      required: [jobId, status]
+      properties:
+        jobId: {type: string, format: uuid}
+        status: {type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED]}
+    TicketPage:
+      type: object
+      required: [content, page, size, totalElements, totalPages]
+      properties:
+        content: {type: array, items: {$ref: '#/components/schemas/Ticket'}}
+        page: {type: integer}
+        size: {type: integer}
+        totalElements: {type: integer, format: int64}
+        totalPages: {type: integer}
+    TicketStatus:
+      type: string
+      enum: [OPEN, IN_PROGRESS, WAITING_CUSTOMER, RESOLVED, CLOSED]
+    Priority:
+      type: string
+      enum: [LOW, MEDIUM, HIGH, URGENT]
+    Category:
+      type: string
+      enum: [ACCOUNT, PAYMENT, TECHNICAL, GENERAL, OTHER]
+    Problem:
+      type: object
+      required: [type, title, status, code, correlationId]
+      properties:
+        type: {type: string, format: uri-reference}
+        title: {type: string}
+        status: {type: integer}
+        detail: {type: string}
+        instance: {type: string, format: uri-reference}
+        code: {type: string}
+        correlationId: {type: string}
+        violations:
+          type: array
+          items:
+            type: object
+            properties:
+              field: {type: string}
+              message: {type: string}
+  responses:
+    BadRequest:
+      description: Invalid request
+      content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+    Unauthorized:
+      description: Authentication required or invalid
+      content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+    Forbidden:
+      description: Insufficient permission
+      content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+    NotFound:
+      description: Resource not found
+      content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+    Conflict:
+      description: Domain conflict
+      content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+    PreconditionFailed:
+      description: Optimistic-lock version conflict
+      content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+    PreconditionRequired:
+      description: If-Match is required
+      content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+
