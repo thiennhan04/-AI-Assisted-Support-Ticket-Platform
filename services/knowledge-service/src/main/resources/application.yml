@@ -1,0 +1,6 @@
+spring:
+  application:
+    name: knowledge-service
+
+server:
+  port: 8084

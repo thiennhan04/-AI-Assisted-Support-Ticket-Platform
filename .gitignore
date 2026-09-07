@@ -1,0 +1,15 @@
+.idea/
+.vscode/
+*.iml
+*.log
+
+**/target/
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+.env
+.env.*
+!.env.example
+
+Thumbs.db
+.DS_Store
