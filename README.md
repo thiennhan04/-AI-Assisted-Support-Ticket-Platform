@@ -71,3 +71,35 @@ Shared infrastructure: RabbitMQ, Redis, S3-compatible object storage, OpenTeleme
 - A model provider can be swapped without changing domain services.
 - The frontend is out of scope except for required API behavior.
 
+
+DD-001 – Bootstrap monorepo: root build và năm Spring Boot module.
+DD-002 – Local infrastructure: PostgreSQL với bốn database/user riêng, RabbitMQ, Redis, MinIO, OpenTelemetry, Prometheus và Grafana.
+Identity Service: tenant, user, role, login, JWT RS256, JWKS và refresh rotation.
+Ticket Service: CRUD, phân quyền tenant, state machine, optimistic locking và audit.
+Transactional outbox + event contracts.
+Knowledge Service: upload, extraction, chunking và fake embedding.
+AI Orchestrator: bắt đầu bằng deterministic fake provider.
+AI Worker: nối luồng event end-to-end, retry và DLQ.
+Sau khi luồng fake chạy ổn mới tích hợp model/embedding provider thật.
+Cuối cùng hoàn thiện security hardening, observability, evaluation và performance tests.
+
+
+| Module | Package/Application | Dependency nền |
+|---|---|---|
+| Identity | `com.portfolio.identity.IdentityServiceApplication` | Web, Validation, Security, OAuth2 Resource Server/JOSE, JPA, Flyway, PostgreSQL, AMQP, Actuator |
+| Ticket | `com.portfolio.ticket.TicketServiceApplication` | Web, Validation, Security, OAuth2 Resource Server, JPA, Flyway, PostgreSQL, AMQP, Actuator |
+| AI Orchestrator | `com.portfolio.ai.AiOrchestratorApplication` | Web, Validation, Security, JPA, Flyway, PostgreSQL, AMQP, Redis, Actuator |
+| Knowledge | `com.portfolio.knowledge.KnowledgeServiceApplication` | Web, Validation, Security, OAuth2 Resource Server, JPA, Flyway, PostgreSQL, AMQP, Actuator |
+| AI Worker | `com.portfolio.worker.AiWorkerApplication` | Spring Boot core, Spring Web client, AMQP, Redis, Actuator |
+
+
+6. Thứ tự để dev bắt đầu DD-101
+1. Chốt các điểm contract ở trên, đặc biệt cách xác định tenant.
+2. Tạo application-local.yml kết nối identity_db.
+3. Viết V001__baseline.sql cho schema Identity.
+4. Viết domain và persistence adapter, kiểm thử truy vấn theo tenant.
+5. Cấu hình password encoder, RSA keys, issuer, audience và TTL.
+6. Viết luồng login, cấp phiên ban đầu và JWKS endpoint.
+7. Viết controller/DTO/error response theo OpenAPI.
+8. Thêm seed user bằng script/profile local.
+9. Kiểm thử login thành công, lỗi chung, tài khoản bị khóa, tenant bị suspended, claims/chữ ký và xử lý lỗi tạo token.

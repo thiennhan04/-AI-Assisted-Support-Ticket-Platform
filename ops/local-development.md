@@ -70,6 +70,39 @@ Use one PostgreSQL container with separate local databases/users: `identity_db`,
 6. Use fake AI/embedding providers until infrastructure flow passes.
 7. Set provider secret locally outside repository to test real model.
 
+### Run Identity Service locally (DD-101)
+
+From the repository root on Windows PowerShell:
+
+```powershell
+docker compose -f deploy/compose.yaml up -d postgres redis
+.\scripts\generate-local-rsa-keys.ps1
+$env:SPRING_PROFILES_ACTIVE = "local"
+$env:LOCAL_SEED_ENABLED = "true"
+$env:LOCAL_SEED_PASSWORD = "ChangeMe123!"
+.\mvnw.cmd -pl services/identity-service -am spring-boot:run
+```
+
+The opt-in seed creates tenant `acme` and three users: `admin@acme.local`,
+`agent@acme.local`, and `customer@acme.local`. They use the password supplied through
+`LOCAL_SEED_PASSWORD`. Disable the seed outside local development and never commit private keys;
+`.local/` is ignored by Git.
+
+Login example:
+
+```powershell
+$body = @{
+  tenantCode = "acme"
+  email = "admin@acme.local"
+  password = $env:LOCAL_SEED_PASSWORD
+} | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://localhost:8081/v1/auth/login `
+  -ContentType application/json -Body $body
+```
+
+Public key discovery is available at `http://localhost:8081/.well-known/jwks.json`. The
+private RSA key is used only by Identity to sign access tokens and is never returned.
+
 ## 5. Local fake provider behavior
 
 The fake provider must be deterministic:
@@ -102,4 +135,3 @@ For each pull request:
 7. Build immutable container image tagged with commit SHA.
 
 Main branch additionally runs end-to-end fake-provider suite and pushes images.
-

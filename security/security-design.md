@@ -36,6 +36,9 @@ Controller annotations are defense-in-depth. Application services must call poli
 
 - Repository methods require `tenantId`; do not offer unscoped `findById` in application code.
 - Derive tenant from verified token, never request body/query.
+- Login is the only tenant lookup exception: it accepts a normalized `tenantCode` because no verified
+  token exists yet. Identity resolves the code to a tenant UUID and writes that UUID to the signed `tid`
+  claim. All authenticated endpoints continue to derive tenant exclusively from the token.
 - Cross-tenant resources return 404 where enumeration is possible.
 - Add integration tests that create identical-shaped data in two tenants.
 - Production may add PostgreSQL Row-Level Security as a second layer; application predicates remain mandatory.
@@ -115,4 +118,3 @@ Allow controlled identifiers: tenant ID, ticket ID, job ID, model alias, token c
 - Hallucinated citation is rejected.
 - Malicious filename and MIME mismatch rejected.
 - Rate limit returns 429 with `Retry-After`.
-

@@ -29,27 +29,32 @@ CREATE TABLE identity.app_user (
   version bigint NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (tenant_id, email)
+  UNIQUE (tenant_id, email),
+  UNIQUE (tenant_id, id)
 );
 
 CREATE TABLE identity.user_role (
-  user_id uuid NOT NULL REFERENCES identity.app_user(id) ON DELETE CASCADE,
+  tenant_id uuid NOT NULL,
+  user_id uuid NOT NULL,
   role varchar(20) NOT NULL CHECK (role IN ('CUSTOMER','AGENT','ADMIN')),
-  PRIMARY KEY (user_id, role)
+  PRIMARY KEY (tenant_id, user_id, role),
+  FOREIGN KEY (tenant_id, user_id) REFERENCES identity.app_user(tenant_id, id) ON DELETE CASCADE
 );
 
 CREATE TABLE identity.refresh_session (
   id uuid PRIMARY KEY,
-  user_id uuid NOT NULL REFERENCES identity.app_user(id),
+  tenant_id uuid NOT NULL,
+  user_id uuid NOT NULL,
   family_id uuid NOT NULL,
   token_hash char(64) NOT NULL UNIQUE,
   replaced_by_id uuid,
   expires_at timestamptz NOT NULL,
   revoked_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
-  last_used_at timestamptz
+  last_used_at timestamptz,
+  FOREIGN KEY (tenant_id, user_id) REFERENCES identity.app_user(tenant_id, id)
 );
-CREATE INDEX ix_refresh_user ON identity.refresh_session(user_id, expires_at);
+CREATE INDEX ix_refresh_user ON identity.refresh_session(tenant_id, user_id, expires_at);
 
 CREATE TABLE ticket.ticket (
   id uuid PRIMARY KEY,
@@ -302,4 +307,3 @@ CREATE TABLE ticket.processed_event (
   processed_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (consumer_name, event_id)
 );
-

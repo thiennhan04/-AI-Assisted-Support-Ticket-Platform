@@ -1,6 +1,47 @@
 spring:
   application:
     name: identity-service
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  data:
+    redis:
+      repositories:
+        enabled: false
+  jpa:
+    open-in-view: false
+
+identity:
+  jwt:
+    issuer: ${JWT_ISSUER:http://localhost:8081}
+    audience: ${JWT_AUDIENCE:ticket-platform}
+    key-id: ${JWT_KEY_ID:identity-current}
+    access-ttl: ${JWT_ACCESS_TTL:PT15M}
+    refresh-ttl: ${JWT_REFRESH_TTL:P30D}
+    private-key: ${JWT_PRIVATE_KEY_LOCATION}
+    public-key: ${JWT_PUBLIC_KEY_LOCATION}
+    previous-key-id: ${JWT_PREVIOUS_KEY_ID:}
+    previous-public-key: ${JWT_PREVIOUS_PUBLIC_KEY_LOCATION:}
+  login-protection:
+    max-failures: ${LOGIN_MAX_FAILURES:5}
+    lock-duration: ${LOGIN_LOCK_DURATION:PT15M}
+    rate-limit: ${LOGIN_RATE_LIMIT:10}
+    rate-window: ${LOGIN_RATE_WINDOW:PT15M}
+    failure-delay-min: ${LOGIN_FAILURE_DELAY_MIN:PT0.15S}
+    failure-delay-max: ${LOGIN_FAILURE_DELAY_MAX:PT0.3S}
 
 server:
   port: 8081
+
+management:
+  health:
+    rabbit:
+      enabled: false
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health,info

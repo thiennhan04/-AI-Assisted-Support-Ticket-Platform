@@ -41,7 +41,9 @@ Dependencies point inward: `api -> application -> domain`; infrastructure implem
 
 ### `POST /v1/auth/login`
 
-Request: `{ "email": "agent@example.com", "password": "..." }`
+Request: `{ "tenantCode": "acme", "email": "agent@example.com", "password": "..." }`.
+`tenantCode` is the unauthenticated lookup context because email is unique only inside a tenant.
+After login, services derive tenant exclusively from the verified JWT `tid` claim.
 
 Response `200`: access token, refresh token, `expiresIn`, user summary. Generic `401 AUTH_INVALID_CREDENTIALS` for unknown user or wrong password.
 
@@ -87,14 +89,17 @@ Use tables `tenant`, `app_user`, `user_role`, `refresh_session`, `outbox_event`.
 ## 6. Transaction rules
 
 - Login verification and refresh-session creation occur in one transaction after password verification.
-- Token signing occurs outside the transaction; if it fails, session creation must roll back or be revoked.
+- Token generation/signing occurs before the short write transaction. The write transaction locks and
+  revalidates the user, resets failed attempts and stores only the refresh-token hash. Tokens are returned
+  only after commit, so a signing or persistence failure never exposes an untracked token.
 - Role/status updates increment `app_user.version` and publish `identity.user.changed.v1` through outbox.
 
 ## 7. Security details
 
 - Rate limit login by normalized email hash and IP: 10 attempts/15 minutes.
 - Add uniform 150-300 ms randomized delay to failed login.
-- Disable after configurable repeated failures; unlock through admin flow.
+- Temporarily lock after five consecutive failures for 15 minutes by default. `DISABLED` is an explicit
+  admin state and is never cleared automatically.
 - Never log password, access token or refresh token.
 - Clock skew allowance: 60 seconds.
 
@@ -107,4 +112,3 @@ Use tables `tenant`, `app_user`, `user_role`, `refresh_session`, `outbox_event`.
 - Cross-tenant admin access denied.
 - JWKS contains current/previous keys.
 - Concurrent refresh permits exactly one success.
-
