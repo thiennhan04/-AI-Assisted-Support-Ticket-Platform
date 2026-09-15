@@ -83,7 +83,10 @@ public class LoginPersistenceService {
                         current.id(),
                         familyId,
                         refreshTokenHash,
+                        null,
                         refreshExpiresAt,
-                        now));
+                        null,
+                        now,
+                        null));
     }
 }

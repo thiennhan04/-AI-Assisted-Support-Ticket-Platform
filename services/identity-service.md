@@ -49,11 +49,17 @@ Response `200`: access token, refresh token, `expiresIn`, user summary. Generic 
 
 ### `POST /v1/auth/refresh`
 
-Accepts one refresh token. Rotate on every use: mark old token replaced and issue a new token family member. Reuse of an already rotated token revokes the entire family and returns `401 AUTH_REFRESH_REUSE_DETECTED`.
+Accepts `{ "refreshToken": "..." }`. Rotate on every use inside a short database transaction:
+lock the presented session, mark it replaced and issue a new token family member. Reuse of an
+already rotated token revokes the entire family and returns
+`401 AUTH_REFRESH_REUSE_DETECTED`. Unknown, expired, revoked, or ineligible-user tokens return
+`401 AUTH_INVALID_REFRESH_TOKEN`.
 
 ### `POST /v1/auth/logout`
 
-Revokes current refresh session. Idempotent; returns `204`.
+Accepts `{ "refreshToken": "..." }` and revokes the submitted session's entire family. It is
+idempotent and always returns `204` for a well-formed request, including when the token is unknown
+or already revoked.
 
 ### `GET /.well-known/jwks.json`
 
@@ -92,6 +98,9 @@ Use tables `tenant`, `app_user`, `user_role`, `refresh_session`, `outbox_event`.
 - Token generation/signing occurs before the short write transaction. The write transaction locks and
   revalidates the user, resets failed attempts and stores only the refresh-token hash. Tokens are returned
   only after commit, so a signing or persistence failure never exposes an untracked token.
+- Refresh locks the presented session pessimistically. Exactly one concurrent request can rotate it.
+  Reuse detection revokes every session in the family and commits that revocation before returning
+  the security error.
 - Role/status updates increment `app_user.version` and publish `identity.user.changed.v1` through outbox.
 
 ## 7. Security details

@@ -41,18 +41,28 @@ paths:
         required: true
         content:
           application/json:
-            schema:
-              type: object
-              required: [refreshToken]
-              properties:
-                refreshToken: {type: string, minLength: 32}
+            schema: {$ref: '#/components/schemas/RefreshTokenRequest'}
       responses:
         '200':
           description: Rotated token pair
           content:
             application/json:
               schema: {$ref: '#/components/schemas/TokenResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
         '401': {$ref: '#/components/responses/Unauthorized'}
+  /v1/auth/logout:
+    post:
+      tags: [Auth]
+      security: []
+      operationId: logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RefreshTokenRequest'}
+      responses:
+        '204': {description: Refresh-token family revoked or already absent}
+        '400': {$ref: '#/components/responses/BadRequest'}
   /v1/tickets:
     post:
       tags: [Tickets]
@@ -289,6 +299,12 @@ components:
         tenantCode: {type: string, pattern: '^[a-z0-9][a-z0-9-]{1,48}[a-z0-9]$', example: acme}
         email: {type: string, format: email, maxLength: 254}
         password: {type: string, minLength: 8, maxLength: 128}
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      additionalProperties: false
+      properties:
+        refreshToken: {type: string, minLength: 32, maxLength: 512}
     TokenResponse:
       type: object
       required: [accessToken, refreshToken, tokenType, expiresIn, user]

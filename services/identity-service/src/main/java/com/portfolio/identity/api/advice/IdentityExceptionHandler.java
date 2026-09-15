@@ -1,7 +1,9 @@
 package com.portfolio.identity.api.advice;
 
 import com.portfolio.identity.application.AuthInvalidCredentialsException;
+import com.portfolio.identity.application.InvalidRefreshTokenException;
 import com.portfolio.identity.application.LoginRateLimitExceededException;
+import com.portfolio.identity.application.RefreshTokenReuseDetectedException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.net.URI;
 import java.util.Map;
@@ -26,6 +28,28 @@ public class IdentityExceptionHandler {
                                 HttpStatus.UNAUTHORIZED,
                                 "AUTH_INVALID_CREDENTIALS",
                                 "Authentication failed"));
+    }
+
+    @ExceptionHandler(InvalidRefreshTokenException.class)
+    ResponseEntity<ProblemDetail> invalidRefreshToken(HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(
+                        problem(
+                                request,
+                                HttpStatus.UNAUTHORIZED,
+                                "AUTH_INVALID_REFRESH_TOKEN",
+                                "Refresh token is invalid"));
+    }
+
+    @ExceptionHandler(RefreshTokenReuseDetectedException.class)
+    ResponseEntity<ProblemDetail> refreshTokenReuse(HttpServletRequest request) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(
+                        problem(
+                                request,
+                                HttpStatus.UNAUTHORIZED,
+                                "AUTH_REFRESH_REUSE_DETECTED",
+                                "Refresh token reuse detected"));
     }
 
     @ExceptionHandler(LoginRateLimitExceededException.class)

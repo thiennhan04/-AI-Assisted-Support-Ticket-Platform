@@ -100,6 +100,19 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8081/v1/auth/login `
   -ContentType application/json -Body $body
 ```
 
+To rotate and then revoke the returned refresh-token family:
+
+```powershell
+$tokens = Invoke-RestMethod -Method Post -Uri http://localhost:8081/v1/auth/login `
+  -ContentType application/json -Body $body
+$refreshBody = @{ refreshToken = $tokens.refreshToken } | ConvertTo-Json
+$tokens = Invoke-RestMethod -Method Post -Uri http://localhost:8081/v1/auth/refresh `
+  -ContentType application/json -Body $refreshBody
+$logoutBody = @{ refreshToken = $tokens.refreshToken } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://localhost:8081/v1/auth/logout `
+  -ContentType application/json -Body $logoutBody
+```
+
 Public key discovery is available at `http://localhost:8081/.well-known/jwks.json`. The
 private RSA key is used only by Identity to sign access tokens and is never returned.
 

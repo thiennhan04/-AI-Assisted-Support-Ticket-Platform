@@ -47,7 +47,7 @@ CREATE TABLE identity.refresh_session (
   user_id uuid NOT NULL,
   family_id uuid NOT NULL,
   token_hash char(64) NOT NULL UNIQUE,
-  replaced_by_id uuid,
+  replaced_by_id uuid REFERENCES identity.refresh_session(id),
   expires_at timestamptz NOT NULL,
   revoked_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -55,6 +55,9 @@ CREATE TABLE identity.refresh_session (
   FOREIGN KEY (tenant_id, user_id) REFERENCES identity.app_user(tenant_id, id)
 );
 CREATE INDEX ix_refresh_user ON identity.refresh_session(tenant_id, user_id, expires_at);
+CREATE INDEX ix_refresh_family ON identity.refresh_session(tenant_id, family_id);
+CREATE UNIQUE INDEX ux_refresh_session_replaced_by ON identity.refresh_session(replaced_by_id)
+  WHERE replaced_by_id IS NOT NULL;
 
 CREATE TABLE ticket.ticket (
   id uuid PRIMARY KEY,

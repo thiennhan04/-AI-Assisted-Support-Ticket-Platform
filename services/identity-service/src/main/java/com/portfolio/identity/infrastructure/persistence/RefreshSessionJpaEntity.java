@@ -29,11 +29,20 @@ class RefreshSessionJpaEntity {
     @JdbcTypeCode(SqlTypes.CHAR)
     private String tokenHash;
 
+    @Column(name = "replaced_by_id")
+    private UUID replacedById;
+
     @Column(name = "expires_at", nullable = false)
     private Instant expiresAt;
 
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
+
+    @Column(name = "last_used_at")
+    private Instant lastUsedAt;
 
     protected RefreshSessionJpaEntity() {}
 
@@ -43,7 +52,29 @@ class RefreshSessionJpaEntity {
         userId = session.userId();
         familyId = session.familyId();
         tokenHash = session.tokenHash();
+        replacedById = session.replacedById();
         expiresAt = session.expiresAt();
+        revokedAt = session.revokedAt();
         createdAt = session.createdAt();
+        lastUsedAt = session.lastUsedAt();
+    }
+
+    RefreshSession toDomain() {
+        return new RefreshSession(
+                id,
+                tenantId,
+                userId,
+                familyId,
+                tokenHash,
+                replacedById,
+                expiresAt,
+                revokedAt,
+                createdAt,
+                lastUsedAt);
+    }
+
+    void markReplaced(UUID replacementId, Instant usedAt) {
+        replacedById = replacementId;
+        lastUsedAt = usedAt;
     }
 }

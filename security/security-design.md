@@ -11,7 +11,9 @@
 
 ## 2. Authentication
 
-- Public APIs require RS256 access JWT except login, refresh and JWKS.
+- Public APIs require RS256 access JWT except login, refresh, logout and JWKS.
+- Refresh tokens are opaque, stored only as SHA-256 hashes, rotated on every use and revoked as
+  a family when reuse is detected. Login and refresh responses use `Cache-Control: no-store`.
 - Validate signature, issuer, audience, expiry and mandatory `sub`/`tid` claims.
 - Internal endpoints reject user tokens and require service identity with expected audience/scope.
 - Signing private keys exist only in Identity Service secret store.

@@ -43,7 +43,7 @@ public class AuthService {
         this.clock = clock;
     }
 
-    public LoginResult login(LoginCommand command) {
+    public AuthTokenResult login(LoginCommand command) {
         var tenantCode = command.tenantCode().strip().toLowerCase(Locale.ROOT);
         var email = command.email().strip().toLowerCase(Locale.ROOT);
         rateLimiter
@@ -76,16 +76,7 @@ public class AuthService {
                 UUID.randomUUID(),
                 UUID.randomUUID());
 
-        return new LoginResult(
-                accessToken.value(),
-                refreshToken.rawValue(),
-                accessToken.expiresInSeconds(),
-                new LoginResult.UserSummary(
-                        user.id(),
-                        user.tenantId(),
-                        user.email(),
-                        user.displayName(),
-                        user.roles()));
+        return AuthTokenResult.from(accessToken, refreshToken, user);
     }
 
     private boolean verifyPassword(String rawPassword, UserAccount candidate) {

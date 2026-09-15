@@ -19,7 +19,11 @@ import java.security.interfaces.RSAPublicKey;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +41,7 @@ import org.springframework.security.oauth2.jwt.JwtEncoderParameters;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -156,6 +161,181 @@ class IdentityLoginIT {
                                 java.security.MessageDigest.getInstance("SHA-256")
                                         .digest(refreshToken.getBytes(StandardCharsets.UTF_8)));
         assertThat(storedHash).isEqualTo(expectedHash).doesNotContain(refreshToken);
+    }
+
+    @Test
+    void refreshRotatesTokenAndLinksSessionsInTheSameFamily() throws Exception {
+        var initial = loginTokens();
+        var oldRefreshToken = initial.get("refreshToken").asText();
+        var oldSession =
+                jdbc.queryForMap(
+                        "SELECT id, family_id FROM identity.refresh_session WHERE token_hash = ?",
+                        sha256(oldRefreshToken));
+
+        var response =
+                mvc.perform(refresh(oldRefreshToken))
+                        .andExpect(status().isOk())
+                        .andExpect(header().string("Cache-Control", "no-store"))
+                        .andExpect(header().string("Pragma", "no-cache"))
+                        .andExpect(jsonPath("$.tokenType").value("Bearer"))
+                        .andExpect(jsonPath("$.expiresIn").value(900))
+                        .andExpect(jsonPath("$.user.id").value(ACME_USER_ID.toString()))
+                        .andReturn();
+        var rotated = objectMapper.readTree(response.getResponse().getContentAsString());
+        var newRefreshToken = rotated.get("refreshToken").asText();
+        var jwt = jwtDecoder.decode(rotated.get("accessToken").asText());
+
+        assertThat(newRefreshToken).isNotEqualTo(oldRefreshToken);
+        assertThat(jwt.getSubject()).isEqualTo(ACME_USER_ID.toString());
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM identity.refresh_session WHERE family_id = ?",
+                                Integer.class,
+                                oldSession.get("family_id")))
+                .isEqualTo(2);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT replaced_by_id FROM identity.refresh_session WHERE id = ?",
+                                UUID.class,
+                                oldSession.get("id")))
+                .isNotNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM identity.refresh_session WHERE token_hash = ?",
+                                Integer.class,
+                                sha256(newRefreshToken)))
+                .isEqualTo(1);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT last_used_at IS NOT NULL FROM identity.refresh_session WHERE id = ?",
+                                Boolean.class,
+                                oldSession.get("id")))
+                .isTrue();
+    }
+
+    @Test
+    void reuseOfRotatedTokenRevokesTheEntireFamily() throws Exception {
+        var oldRefreshToken = loginTokens().get("refreshToken").asText();
+        var rotated =
+                objectMapper.readTree(
+                        mvc.perform(refresh(oldRefreshToken))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString());
+
+        mvc.perform(refresh(oldRefreshToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_REFRESH_REUSE_DETECTED"));
+
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM identity.refresh_session WHERE revoked_at IS NULL",
+                                Integer.class))
+                .isZero();
+        mvc.perform(refresh(rotated.get("refreshToken").asText()))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_INVALID_REFRESH_TOKEN"));
+    }
+
+    @Test
+    void concurrentRefreshAllowsExactlyOneSuccessAndRevokesFamilyOnReuse() throws Exception {
+        var oldRefreshToken = loginTokens().get("refreshToken").asText();
+        var ready = new CountDownLatch(2);
+        var start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var first = executor.submit(() -> concurrentRefresh(oldRefreshToken, ready, start));
+            var second = executor.submit(() -> concurrentRefresh(oldRefreshToken, ready, start));
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+
+            var results =
+                    List.of(first.get(15, TimeUnit.SECONDS), second.get(15, TimeUnit.SECONDS));
+            assertThat(results.stream().map(result -> result.getResponse().getStatus()).toList())
+                    .containsExactlyInAnyOrder(200, 401);
+            var rejected =
+                    results.stream()
+                            .filter(result -> result.getResponse().getStatus() == 401)
+                            .findFirst()
+                            .orElseThrow();
+            assertThat(
+                            objectMapper
+                                    .readTree(rejected.getResponse().getContentAsString())
+                                    .get("code")
+                                    .asText())
+                    .isEqualTo("AUTH_REFRESH_REUSE_DETECTED");
+            assertThat(
+                            jdbc.queryForObject(
+                                    "SELECT count(*) FROM identity.refresh_session WHERE revoked_at IS NULL",
+                                    Integer.class))
+                    .isZero();
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void expiredSuspendedAndDisabledSessionsCannotRefresh() throws Exception {
+        var expiredToken = loginTokens().get("refreshToken").asText();
+        jdbc.update("UPDATE identity.refresh_session SET expires_at = now() - interval '1 second'");
+        assertInvalidRefresh(expiredToken);
+
+        jdbc.update("DELETE FROM identity.refresh_session");
+        var disabledToken = loginTokens().get("refreshToken").asText();
+        jdbc.update("UPDATE identity.app_user SET status = 'DISABLED' WHERE id = ?", ACME_USER_ID);
+        assertInvalidRefresh(disabledToken);
+
+        jdbc.update("UPDATE identity.app_user SET status = 'ACTIVE' WHERE id = ?", ACME_USER_ID);
+        jdbc.update("DELETE FROM identity.refresh_session");
+        var suspendedToken = loginTokens().get("refreshToken").asText();
+        jdbc.update("UPDATE identity.tenant SET status = 'SUSPENDED' WHERE id = ?", ACME_ID);
+        assertInvalidRefresh(suspendedToken);
+    }
+
+    @Test
+    void logoutRevokesFamilyAndIsIdempotentWithoutTokenDisclosure() throws Exception {
+        var initialToken = loginTokens().get("refreshToken").asText();
+        var rotated =
+                objectMapper.readTree(
+                        mvc.perform(refresh(initialToken))
+                                .andExpect(status().isOk())
+                                .andReturn()
+                                .getResponse()
+                                .getContentAsString());
+        var currentToken = rotated.get("refreshToken").asText();
+
+        mvc.perform(logout(currentToken)).andExpect(status().isNoContent());
+        mvc.perform(logout(currentToken)).andExpect(status().isNoContent());
+        mvc.perform(logout("unknown-refresh-token-value-with-valid-length"))
+                .andExpect(status().isNoContent());
+
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM identity.refresh_session WHERE revoked_at IS NULL",
+                                Integer.class))
+                .isZero();
+        assertInvalidRefresh(currentToken);
+    }
+
+    @Test
+    void refreshAndLogoutRejectMalformedOrUnknownFields() throws Exception {
+        mvc.perform(refresh("too-short"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mvc.perform(
+                        post("/v1/auth/refresh")
+                                .contentType("application/json")
+                                .content(
+                                        """
+                                        {"refreshToken":"unknown-refresh-token-value-with-valid-length",
+                                         "userId":"10000000-0000-4000-8000-000000000101"}
+                                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        mvc.perform(logout("too-short"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
     }
 
     @Test
@@ -300,6 +480,56 @@ class IdentityLoginIT {
                                         "tenantCode", tenantCode,
                                         "email", email,
                                         "password", password)));
+    }
+
+    private JsonNode loginTokens() throws Exception {
+        return objectMapper.readTree(
+                mvc.perform(login("acme", "agent@example.com", PASSWORD))
+                        .andExpect(status().isOk())
+                        .andReturn()
+                        .getResponse()
+                        .getContentAsString());
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder refresh(
+            String refreshToken) throws Exception {
+        return tokenRequest("/v1/auth/refresh", refreshToken);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder logout(
+            String refreshToken) throws Exception {
+        return tokenRequest("/v1/auth/logout", refreshToken);
+    }
+
+    private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder tokenRequest(
+            String path, String refreshToken) throws Exception {
+        return post(path)
+                .contentType("application/json")
+                .content(
+                        objectMapper.writeValueAsString(
+                                java.util.Map.of("refreshToken", refreshToken)));
+    }
+
+    private MvcResult concurrentRefresh(String token, CountDownLatch ready, CountDownLatch start)
+            throws Exception {
+        ready.countDown();
+        if (!start.await(5, TimeUnit.SECONDS)) {
+            throw new IllegalStateException("Concurrent refresh start timed out");
+        }
+        return mvc.perform(refresh(token)).andReturn();
+    }
+
+    private void assertInvalidRefresh(String token) throws Exception {
+        mvc.perform(refresh(token))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("AUTH_INVALID_REFRESH_TOKEN"));
+    }
+
+    private String sha256(String value) throws Exception {
+        return HexFormat.of()
+                .formatHex(
+                        java.security.MessageDigest.getInstance("SHA-256")
+                                .digest(value.getBytes(StandardCharsets.UTF_8)));
     }
 
     private void insertTenant(UUID id, String code, String status) {

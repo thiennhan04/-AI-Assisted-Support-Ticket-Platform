@@ -87,6 +87,8 @@ public class SecurityConfiguration {
                         requests ->
                                 requests.requestMatchers(
                                                 "/v1/auth/login",
+                                                "/v1/auth/refresh",
+                                                "/v1/auth/logout",
                                                 "/.well-known/jwks.json",
                                                 "/actuator/health/**",
                                                 "/actuator/info")

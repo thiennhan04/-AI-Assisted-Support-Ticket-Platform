@@ -73,6 +73,21 @@ public class JpaIdentityRepositoryAdapter implements UserRepository, RefreshSess
         sessions.save(new RefreshSessionJpaEntity(session));
     }
 
+    @Override
+    public Optional<RefreshSession> findByTokenHashForUpdate(String tokenHash) {
+        return sessions.findByTokenHash(tokenHash).map(RefreshSessionJpaEntity::toDomain);
+    }
+
+    @Override
+    public void markReplaced(UUID sessionId, UUID replacementId, Instant usedAt) {
+        sessions.findById(sessionId).orElseThrow().markReplaced(replacementId, usedAt);
+    }
+
+    @Override
+    public void revokeFamily(UUID tenantId, UUID familyId, Instant revokedAt) {
+        sessions.revokeFamily(tenantId, familyId, revokedAt);
+    }
+
     private UserAccount toDomain(TenantJpaEntity tenant, UserJpaEntity user) {
         var assignedRoles =
                 roles.findAllByTenantIdAndUserId(tenant.getId(), user.getId()).stream()

@@ -9,5 +9,21 @@ public record RefreshSession(
         UUID userId,
         UUID familyId,
         String tokenHash,
+        UUID replacedById,
         Instant expiresAt,
-        Instant createdAt) {}
+        Instant revokedAt,
+        Instant createdAt,
+        Instant lastUsedAt) {
+
+    public boolean wasRotated() {
+        return replacedById != null;
+    }
+
+    public boolean isRevoked() {
+        return revokedAt != null;
+    }
+
+    public boolean isExpiredAt(Instant now) {
+        return !expiresAt.isAfter(now);
+    }
+}

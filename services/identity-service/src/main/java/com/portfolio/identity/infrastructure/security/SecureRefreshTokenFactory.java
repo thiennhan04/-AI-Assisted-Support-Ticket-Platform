@@ -19,13 +19,15 @@ public class SecureRefreshTokenFactory implements RefreshTokenFactory {
         var bytes = new byte[32];
         secureRandom.nextBytes(bytes);
         var raw = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
-        return new GeneratedRefreshToken(raw, sha256(raw));
+        return new GeneratedRefreshToken(raw, hash(raw));
     }
 
-    private static String sha256(String value) {
+    @Override
+    public String hash(String rawValue) {
         try {
             var digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(value.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of()
+                    .formatHex(digest.digest(rawValue.getBytes(StandardCharsets.UTF_8)));
         } catch (NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 is unavailable", exception);
         }
