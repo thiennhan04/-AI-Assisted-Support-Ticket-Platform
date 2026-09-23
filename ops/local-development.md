@@ -116,6 +116,22 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8081/v1/auth/logout `
 Public key discovery is available at `http://localhost:8081/.well-known/jwks.json`. The
 private RSA key is used only by Identity to sign access tokens and is never returned.
 
+### Run a resource service locally (DD-103)
+
+Start Identity first, then configure Ticket, Knowledge, or AI Orchestrator with the same token
+contract:
+
+```powershell
+$env:JWT_ISSUER = "http://localhost:8081"
+$env:JWT_AUDIENCE = "ticket-platform"
+$env:JWKS_URI = "http://localhost:8081/.well-known/jwks.json"
+.\mvnw.cmd -pl services/ticket-service -am spring-boot:run
+```
+
+Call protected APIs with `Authorization: Bearer <accessToken>`. Each resource service downloads and
+caches public keys from JWKS; it never receives the Identity private key. Health and info endpoints
+remain public. User tokens cannot call `/internal/**`.
+
 ## 5. Local fake provider behavior
 
 The fake provider must be deterministic:

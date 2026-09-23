@@ -4,3 +4,9 @@ spring:
 
 server:
   port: 8083
+
+security:
+  jwt:
+    issuer: ${JWT_ISSUER:http://localhost:8081}
+    audience: ${JWT_AUDIENCE:ticket-platform}
+    jwk-set-uri: ${JWKS_URI:http://localhost:8081/.well-known/jwks.json}

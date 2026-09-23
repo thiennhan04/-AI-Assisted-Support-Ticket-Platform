@@ -33,6 +33,18 @@ com.portfolio.ticket
     security
 ```
 
+### Authenticated caller
+
+Ticket Service is an OAuth2 Resource Server. It accepts only RS256 access tokens issued by the
+configured Identity Service, resolves signing keys from `JWKS_URI`, and validates `iss`, `aud`,
+`exp`, `sub`, `tid`, and `roles`. Verified claims are converted to
+`com.portfolio.ticket.application.AuthenticatedPrincipal`; application code must derive tenant and
+user identity from this principal, never from request input. Controller role checks use
+`ROLE_CUSTOMER`, `ROLE_AGENT`, and `ROLE_ADMIN` authorities.
+
+User access tokens are denied on `/internal/**`; service-to-service authentication will be added
+with the internal API implementation.
+
 ## 3. Domain commands
 
 | Command | Allowed roles | Main validation |
@@ -119,4 +131,3 @@ Use signed direct upload:
 - Outbox written atomically with ticket.
 - Duplicate AI event ignored.
 - AI failure does not change ticket status.
-

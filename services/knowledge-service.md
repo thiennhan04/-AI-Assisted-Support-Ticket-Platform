@@ -33,6 +33,15 @@ com.portfolio.knowledge
     messaging
 ```
 
+### Authenticated caller
+
+Knowledge Service validates RS256 user access tokens locally with the Identity JWKS. A valid token
+must have the configured issuer/audience plus UUID `sub` and `tid` claims and a non-empty known
+`roles` list. Verified identity is exposed as
+`com.portfolio.knowledge.application.AuthenticatedPrincipal`; tenant filtering must use its
+`tenantId`. User tokens are denied on `/internal/**` until service-to-service authentication is
+implemented.
+
 ## 3. Document lifecycle
 
 `UPLOADING -> QUEUED -> PROCESSING -> ACTIVE`, with `FAILED`, `DELETING`, `DELETED` terminal/side states. A previous ACTIVE version remains searchable until the replacement becomes fully ACTIVE.
@@ -117,4 +126,3 @@ Store `embedding_model`, `embedding_dimension` and `chunking_version` per docume
 - Duplicate ingest idempotency.
 - Embedding batch partial failure cleanup.
 - Search relevance fixture with Recall@5 baseline.
-

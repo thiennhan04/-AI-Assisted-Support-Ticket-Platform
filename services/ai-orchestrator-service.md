@@ -37,6 +37,14 @@ com.portfolio.ai
     messaging
 ```
 
+### Authenticated caller
+
+AI Orchestrator validates RS256 user access tokens locally with the Identity JWKS and maps verified
+`sub`, `tid`, and `roles` claims to `com.portfolio.ai.application.AuthenticatedPrincipal`. Prompt
+administration APIs can use the resulting role authorities. User access tokens are denied on
+`/internal/**`; AI Worker calls remain unavailable until the separate service-identity mechanism is
+implemented.
+
 ## 3. Internal endpoints
 
 ### `POST /internal/v1/ai-jobs`
@@ -145,4 +153,3 @@ Implementations:
 - PII redaction.
 - Tenant budget concurrency.
 - Fake provider end-to-end event contract.
-
