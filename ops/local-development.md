@@ -132,6 +132,27 @@ Call protected APIs with `Authorization: Bearer <accessToken>`. Each resource se
 caches public keys from JWKS; it never receives the Identity private key. Health and info endpoints
 remain public. User tokens cannot call `/internal/**`.
 
+### Exercise Ticket CRUD locally (DD-201)
+
+Keep Identity running, start PostgreSQL if needed, and run Ticket Service with the same JWT
+settings shown above. Obtain `accessToken` from `/v1/auth/login`, then create and query a ticket:
+
+```powershell
+$headers = @{ Authorization = "Bearer $($tokens.accessToken)" }
+$ticketBody = @{
+  subject = "Cannot sign in"
+  description = "The customer cannot sign in to the account"
+  priority = "HIGH"
+} | ConvertTo-Json
+$ticket = Invoke-RestMethod -Method Post -Uri http://localhost:8082/v1/tickets `
+  -Headers $headers -ContentType application/json -Body $ticketBody
+Invoke-RestMethod -Method Get -Uri http://localhost:8082/v1/tickets -Headers $headers
+```
+
+Do not put `tenantId` or `requesterId` in the request. Ticket Service derives both from the verified
+access token. The target OpenAPI lists `Idempotency-Key` and `If-Match`, but their enforcement starts
+in DD-202.
+
 ## 5. Local fake provider behavior
 
 The fake provider must be deterministic:

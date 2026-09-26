@@ -131,3 +131,16 @@ Use signed direct upload:
 - Outbox written atomically with ticket.
 - Duplicate AI event ignored.
 - AI failure does not change ticket status.
+
+## 10. Delivery status
+
+DD-201 implements ticket creation, detail, tenant-aware query/filter/pagination, update, the ticket
+state machine, role policy, PostgreSQL persistence, and Flyway migration `V001`. Tenant and
+requester identity are always derived from the verified JWT principal; neither can be supplied in
+the request body.
+
+The `Idempotency-Key`, `If-Match`/ETag behavior, and concurrent-update contract described above are
+deliberately reserved for DD-202. Comments/audit and the transactional outbox remain DD-203 and
+DD-204. Assignment currently stores an authorized Agent/Admin-selected user UUID; validating that
+the selected user is an active agent in the same tenant requires the later Identity user-directory
+integration.

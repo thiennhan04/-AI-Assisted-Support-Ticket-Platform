@@ -9,6 +9,8 @@ CREATE SCHEMA IF NOT EXISTS ticket;
 CREATE SCHEMA IF NOT EXISTS ai;
 CREATE SCHEMA IF NOT EXISTS knowledge;
 
+CREATE SEQUENCE ticket.ticket_number_seq START WITH 1 INCREMENT BY 1;
+
 CREATE TABLE identity.tenant (
   id uuid PRIMARY KEY,
   code varchar(50) NOT NULL UNIQUE,
@@ -65,18 +67,19 @@ CREATE TABLE ticket.ticket (
   ticket_number varchar(30) NOT NULL,
   requester_id uuid NOT NULL,
   assignee_id uuid,
-  subject varchar(300) NOT NULL,
-  description text NOT NULL,
-  category varchar(30),
-  priority varchar(20) NOT NULL,
-  status varchar(30) NOT NULL,
-  content_version bigint NOT NULL DEFAULT 0,
-  version bigint NOT NULL DEFAULT 0,
+  subject varchar(300) NOT NULL CHECK (char_length(subject) BETWEEN 3 AND 300),
+  description text NOT NULL CHECK (char_length(description) BETWEEN 10 AND 20000),
+  category varchar(30) CHECK (category IN ('ACCOUNT','PAYMENT','TECHNICAL','GENERAL','OTHER')),
+  priority varchar(20) NOT NULL CHECK (priority IN ('LOW','MEDIUM','HIGH','URGENT')),
+  status varchar(30) NOT NULL CHECK (
+    status IN ('OPEN','IN_PROGRESS','WAITING_CUSTOMER','RESOLVED','CLOSED')
+  ),
+  content_version bigint NOT NULL DEFAULT 0 CHECK (content_version >= 0),
+  version bigint NOT NULL DEFAULT 0 CHECK (version >= 0),
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   closed_at timestamptz,
-  UNIQUE (tenant_id, ticket_number),
-  CHECK (char_length(description) <= 20000)
+  UNIQUE (tenant_id, ticket_number)
 );
 CREATE INDEX ix_ticket_status_updated ON ticket.ticket(tenant_id, status, updated_at DESC);
 CREATE INDEX ix_ticket_assignee_status ON ticket.ticket(tenant_id, assignee_id, status);

@@ -1,6 +1,17 @@
 spring:
   application:
     name: ticket-service
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/ticket_db}
+    username: ${DB_USERNAME:ticket_service}
+    password: ${DB_PASSWORD:local-ticket-db}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
 
 server:
   port: 8082
@@ -10,3 +21,16 @@ security:
     issuer: ${JWT_ISSUER:http://localhost:8081}
     audience: ${JWT_AUDIENCE:ticket-platform}
     jwk-set-uri: ${JWKS_URI:http://localhost:8081/.well-known/jwks.json}
+
+management:
+  health:
+    rabbit:
+      enabled: false
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  endpoints:
+    web:
+      exposure:
+        include: health,info
