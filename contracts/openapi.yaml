@@ -146,6 +146,9 @@ paths:
       responses:
         '200':
           description: Updated
+          headers:
+            ETag:
+              schema: {type: string, example: '"5"'}
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Ticket'}

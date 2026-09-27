@@ -5,6 +5,7 @@ import com.portfolio.ticket.api.dto.TicketPageResponse;
 import com.portfolio.ticket.api.dto.TicketResponse;
 import com.portfolio.ticket.api.dto.UpdateTicketRequest;
 import com.portfolio.ticket.application.AuthenticatedPrincipal;
+import com.portfolio.ticket.application.TicketCommandException;
 import com.portfolio.ticket.application.TicketCommandService;
 import com.portfolio.ticket.application.TicketQuery;
 import com.portfolio.ticket.application.TicketQueryService;
@@ -27,6 +28,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -47,17 +49,20 @@ public class TicketController {
     @PostMapping
     public ResponseEntity<TicketResponse> create(
             @AuthenticationPrincipal AuthenticatedPrincipal principal,
+            @RequestHeader("Idempotency-Key") UUID idempotencyKey,
             @Valid @RequestBody CreateTicketRequest request) {
-        var ticket = commands.create(principal, request.toCommand());
+        var ticket = commands.create(principal, idempotencyKey, request.toCommand());
         return ResponseEntity.created(URI.create("/v1/tickets/" + ticket.id()))
+                .eTag(etag(ticket.version()))
                 .body(TicketResponse.from(ticket));
     }
 
     @GetMapping("/{ticketId}")
-    public TicketResponse get(
+    public ResponseEntity<TicketResponse> get(
             @AuthenticationPrincipal AuthenticatedPrincipal principal,
             @PathVariable UUID ticketId) {
-        return TicketResponse.from(queries.get(principal, ticketId));
+        var ticket = queries.get(principal, ticketId);
+        return ResponseEntity.ok().eTag(etag(ticket.version())).body(TicketResponse.from(ticket));
     }
 
     @GetMapping
@@ -94,10 +99,27 @@ public class TicketController {
     }
 
     @PatchMapping("/{ticketId}")
-    public TicketResponse update(
+    public ResponseEntity<TicketResponse> update(
             @AuthenticationPrincipal AuthenticatedPrincipal principal,
             @PathVariable UUID ticketId,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch,
             @Valid @RequestBody UpdateTicketRequest request) {
-        return TicketResponse.from(commands.update(principal, ticketId, request.toCommand()));
+        var ticket =
+                commands.update(principal, ticketId, expectedVersion(ifMatch), request.toCommand());
+        return ResponseEntity.ok().eTag(etag(ticket.version())).body(TicketResponse.from(ticket));
+    }
+
+    private long expectedVersion(String ifMatch) {
+        if (ifMatch == null) {
+            throw TicketCommandException.preconditionRequired();
+        }
+        if (!ifMatch.matches("\"[0-9]+\"")) {
+            throw new IllegalArgumentException("If-Match must be a quoted ticket version");
+        }
+        return Long.parseLong(ifMatch.substring(1, ifMatch.length() - 1));
+    }
+
+    private String etag(long version) {
+        return "\"" + version + "\"";
     }
 }

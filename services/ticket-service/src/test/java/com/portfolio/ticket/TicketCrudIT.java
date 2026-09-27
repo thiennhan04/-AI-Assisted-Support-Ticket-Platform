@@ -5,6 +5,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -82,6 +83,7 @@ class TicketCrudIT {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbc.update("DELETE FROM ticket.idempotency_record");
         jdbc.update("DELETE FROM ticket.ticket");
         jdbc.execute("ALTER SEQUENCE ticket.ticket_number_seq RESTART WITH 1");
     }
@@ -125,10 +127,67 @@ class TicketCrudIT {
                                 jsonPath("$.requesterId").value(ACME_CUSTOMER.userId().toString()))
                         .andExpect(jsonPath("$.status").value(TicketStatus.OPEN.name()))
                         .andExpect(jsonPath("$.priority").value(Priority.MEDIUM.name()))
+                        .andExpect(header().string("ETag", "\"0\""))
                         .andReturn();
 
         var ticketId = ticketIdFrom(result.getResponse().getContentAsString());
         assertThat(storedTenantId(ticketId)).isEqualTo(ACME_TENANT_ID);
+    }
+
+    @Test
+    @DisplayName("Retrying the same create request returns the original ticket")
+    void replaysCreateRequestWithoutCreatingDuplicate() throws Exception {
+        var key = UUID.randomUUID();
+
+        var first =
+                createTicketAs(ACME_CUSTOMER, key, "Cannot sign in", Priority.HIGH)
+                        .andExpect(status().isCreated())
+                        .andReturn();
+        var replay =
+                createTicketAs(ACME_CUSTOMER, key, "Cannot sign in", Priority.HIGH)
+                        .andExpect(status().isCreated())
+                        .andReturn();
+
+        assertThat(ticketIdFrom(replay.getResponse().getContentAsString()))
+                .isEqualTo(ticketIdFrom(first.getResponse().getContentAsString()));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket.ticket", Integer.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("Reusing an Idempotency-Key for different content is rejected")
+    void rejectsIdempotencyKeyReusedForDifferentRequest() throws Exception {
+        var key = UUID.randomUUID();
+        createTicketAs(ACME_CUSTOMER, key, "Cannot sign in", Priority.HIGH)
+                .andExpect(status().isCreated());
+
+        createTicketAs(ACME_CUSTOMER, key, "Payment failed", Priority.HIGH)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
+    }
+
+    @Test
+    @DisplayName("Update requires the current ETag version")
+    void rejectsMissingAndStaleIfMatch() throws Exception {
+        var ticketId = createdTicketIdAs(ACME_CUSTOMER, "Versioned update", Priority.MEDIUM);
+        var request = changePriorityTo(Priority.HIGH);
+
+        mvc.perform(
+                        patch("/v1/tickets/{ticketId}", ticketId)
+                                .with(authenticatedAs(ACME_AGENT))
+                                .contentType("application/json")
+                                .content(json(request)))
+                .andExpect(status().isPreconditionRequired())
+                .andExpect(jsonPath("$.code").value("PRECONDITION_REQUIRED"));
+
+        updateTicketAs(ACME_AGENT, ticketId, request)
+                .andExpect(status().isOk())
+                .andExpect(header().string("ETag", "\"1\""));
+
+        updateTicketAs(ACME_AGENT, ticketId, 0, changePriorityTo(Priority.URGENT))
+                .andExpect(status().isPreconditionFailed())
+                .andExpect(jsonPath("$.code").value("TICKET_VERSION_CONFLICT"))
+                .andExpect(jsonPath("$.currentVersion").value(1));
     }
 
     @Test
@@ -213,9 +272,15 @@ class TicketCrudIT {
 
     private ResultActions createTicketAs(Actor actor, String subject, Priority priority)
             throws Exception {
+        return createTicketAs(actor, UUID.randomUUID(), subject, priority);
+    }
+
+    private ResultActions createTicketAs(
+            Actor actor, UUID idempotencyKey, String subject, Priority priority) throws Exception {
         return mvc.perform(
                 post("/v1/tickets")
                         .with(authenticatedAs(actor))
+                        .header("Idempotency-Key", idempotencyKey)
                         .contentType("application/json")
                         .content(json(createRequest(subject, priority))));
     }
@@ -245,9 +310,16 @@ class TicketCrudIT {
 
     private ResultActions updateTicketAs(Actor actor, UUID ticketId, UpdateTicketRequest request)
             throws Exception {
+        return updateTicketAs(actor, ticketId, storedVersion(ticketId), request);
+    }
+
+    private ResultActions updateTicketAs(
+            Actor actor, UUID ticketId, long version, UpdateTicketRequest request)
+            throws Exception {
         return mvc.perform(
                 patch("/v1/tickets/{ticketId}", ticketId)
                         .with(authenticatedAs(actor))
+                        .header("If-Match", "\"" + version + "\"")
                         .contentType("application/json")
                         .content(json(request)));
     }
@@ -289,6 +361,11 @@ class TicketCrudIT {
     private UUID storedTenantId(UUID ticketId) {
         return jdbc.queryForObject(
                 "SELECT tenant_id FROM ticket.ticket WHERE id = ?", UUID.class, ticketId);
+    }
+
+    private long storedVersion(UUID ticketId) {
+        return jdbc.queryForObject(
+                "SELECT version FROM ticket.ticket WHERE id = ?", Long.class, ticketId);
     }
 
     private String json(Object value) throws Exception {

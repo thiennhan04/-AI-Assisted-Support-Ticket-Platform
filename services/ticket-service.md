@@ -139,8 +139,9 @@ state machine, role policy, PostgreSQL persistence, and Flyway migration `V001`.
 requester identity are always derived from the verified JWT principal; neither can be supplied in
 the request body.
 
-The `Idempotency-Key`, `If-Match`/ETag behavior, and concurrent-update contract described above are
-deliberately reserved for DD-202. Comments/audit and the transactional outbox remain DD-203 and
-DD-204. Assignment currently stores an authorized Agent/Admin-selected user UUID; validating that
-the selected user is an active agent in the same tenant requires the later Identity user-directory
-integration.
+DD-202 adds 24-hour create idempotency scoped to tenant and requester, ETag responses, required
+`If-Match` on updates, and `412 TICKET_VERSION_CONFLICT` for stale writes. Flyway migration `V002`
+stores the create request hash and original ticket reference. Comments/audit and the transactional
+outbox remain DD-203 and DD-204. Assignment currently stores an authorized Agent/Admin-selected
+user UUID; validating that the selected user is an active agent in the same tenant requires the
+later Identity user-directory integration.

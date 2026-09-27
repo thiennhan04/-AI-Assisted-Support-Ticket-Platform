@@ -1,5 +1,6 @@
 package com.portfolio.ticket.api.advice;
 
+import com.portfolio.ticket.application.TicketCommandException;
 import com.portfolio.ticket.application.TicketForbiddenException;
 import com.portfolio.ticket.application.TicketNotFoundException;
 import com.portfolio.ticket.domain.ClosedTicketMutationException;
@@ -12,6 +13,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -48,6 +50,31 @@ public class TicketExceptionHandler {
                 HttpStatus.CONFLICT,
                 "TICKET_CLOSED",
                 "Closed ticket must be reopened before it can be changed",
+                request);
+    }
+
+    @ExceptionHandler(TicketCommandException.class)
+    ResponseEntity<ProblemDetail> commandConflict(
+            TicketCommandException exception, HttpServletRequest request) {
+        var status =
+                switch (exception.reason()) {
+                    case IDEMPOTENCY_KEY_REUSED -> HttpStatus.CONFLICT;
+                    case PRECONDITION_REQUIRED -> HttpStatus.PRECONDITION_REQUIRED;
+                    case TICKET_VERSION_CONFLICT -> HttpStatus.PRECONDITION_FAILED;
+                };
+        var response = response(status, exception.reason().name(), exception.getMessage(), request);
+        if (exception.currentVersion() != null) {
+            response.getBody().setProperty("currentVersion", exception.currentVersion());
+        }
+        return response;
+    }
+
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    ResponseEntity<ProblemDetail> concurrentUpdate(HttpServletRequest request) {
+        return response(
+                HttpStatus.PRECONDITION_FAILED,
+                "TICKET_VERSION_CONFLICT",
+                "Ticket was changed by another request; reload it and try again",
                 request);
     }
 

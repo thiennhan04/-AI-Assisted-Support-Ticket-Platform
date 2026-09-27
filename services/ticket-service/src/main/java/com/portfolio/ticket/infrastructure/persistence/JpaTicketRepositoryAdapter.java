@@ -43,6 +43,7 @@ public class JpaTicketRepositoryAdapter implements TicketRepository {
     public Ticket create(Ticket ticket) {
         var entity = TicketJpaEntity.fromDomain(ticket);
         entityManager.persist(entity);
+        entityManager.flush();
         return entity.toDomain();
     }
 

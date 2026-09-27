@@ -138,7 +138,10 @@ Keep Identity running, start PostgreSQL if needed, and run Ticket Service with t
 settings shown above. Obtain `accessToken` from `/v1/auth/login`, then create and query a ticket:
 
 ```powershell
-$headers = @{ Authorization = "Bearer $($tokens.accessToken)" }
+$headers = @{
+  Authorization = "Bearer $($tokens.accessToken)"
+  "Idempotency-Key" = [guid]::NewGuid().ToString()
+}
 $ticketBody = @{
   subject = "Cannot sign in"
   description = "The customer cannot sign in to the account"
@@ -150,8 +153,9 @@ Invoke-RestMethod -Method Get -Uri http://localhost:8082/v1/tickets -Headers $he
 ```
 
 Do not put `tenantId` or `requesterId` in the request. Ticket Service derives both from the verified
-access token. The target OpenAPI lists `Idempotency-Key` and `If-Match`, but their enforcement starts
-in DD-202.
+access token. Keep the response `ETag` and send it as `If-Match` when updating the ticket. Repeating
+a create request with the same `Idempotency-Key` and body returns the original ticket; reusing that
+key with a different body returns `409`.
 
 ## 5. Local fake provider behavior
 
