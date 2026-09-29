@@ -147,19 +147,31 @@ public final class Ticket {
 
     public void changePriority(Priority newPriority, Instant now) {
         requireMutable();
-        priority = Objects.requireNonNull(newPriority);
+        var requiredPriority = Objects.requireNonNull(newPriority);
+        if (priority == requiredPriority) {
+            return;
+        }
+        priority = requiredPriority;
         updatedAt = now;
     }
 
     public void changeCategory(Category newCategory, Instant now) {
         requireMutable();
-        category = Objects.requireNonNull(newCategory);
+        var requiredCategory = Objects.requireNonNull(newCategory);
+        if (category == requiredCategory) {
+            return;
+        }
+        category = requiredCategory;
         updatedAt = now;
     }
 
     public void assign(UUID newAssigneeId, Instant now) {
         requireMutable();
-        assigneeId = Objects.requireNonNull(newAssigneeId);
+        var requiredAssigneeId = Objects.requireNonNull(newAssigneeId);
+        if (requiredAssigneeId.equals(assigneeId)) {
+            return;
+        }
+        assigneeId = requiredAssigneeId;
         updatedAt = now;
         if (status == TicketStatus.OPEN) {
             transitionTo(TicketStatus.IN_PROGRESS, now);
@@ -178,6 +190,11 @@ public final class Ticket {
         status = target;
         updatedAt = now;
         closedAt = target == TicketStatus.CLOSED ? now : null;
+    }
+
+    public void recordCommentActivity(Instant now) {
+        requireMutable();
+        updatedAt = Objects.requireNonNull(now);
     }
 
     public boolean canTransitionTo(TicketStatus target) {

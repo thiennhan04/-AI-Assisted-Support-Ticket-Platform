@@ -1,9 +1,12 @@
 package com.portfolio.ticket.application;
 
 import com.portfolio.ticket.domain.Ticket;
+import com.portfolio.ticket.domain.TicketComment;
+import com.portfolio.ticket.domain.TicketHistoryRepository;
 import com.portfolio.ticket.domain.TicketPage;
 import com.portfolio.ticket.domain.TicketRepository;
 import com.portfolio.ticket.domain.TicketSearchCriteria;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -16,11 +19,20 @@ public class TicketQueryService {
             Set.of("updatedAt", "createdAt", "priority", "status", "number");
 
     private final TicketRepository tickets;
+    private final TicketHistoryRepository history;
     private final TicketPolicy policy;
 
-    public TicketQueryService(TicketRepository tickets, TicketPolicy policy) {
+    public TicketQueryService(
+            TicketRepository tickets, TicketHistoryRepository history, TicketPolicy policy) {
         this.tickets = tickets;
+        this.history = history;
         this.policy = policy;
+    }
+
+    @Transactional(readOnly = true)
+    public List<TicketComment> listComments(AuthenticatedPrincipal principal, UUID ticketId) {
+        var ticket = get(principal, ticketId);
+        return history.findComments(principal.tenantId(), ticket.id(), policy.isSupport(principal));
     }
 
     @Transactional(readOnly = true)

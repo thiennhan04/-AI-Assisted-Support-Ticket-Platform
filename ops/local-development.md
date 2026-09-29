@@ -147,8 +147,18 @@ $ticketBody = @{
   description = "The customer cannot sign in to the account"
   priority = "HIGH"
 } | ConvertTo-Json
-$ticket = Invoke-RestMethod -Method Post -Uri http://localhost:8082/v1/tickets `
+$created = Invoke-WebRequest -Method Post -Uri http://localhost:8082/v1/tickets `
   -Headers $headers -ContentType application/json -Body $ticketBody
+$ticket = $created.Content | ConvertFrom-Json
+$commentHeaders = @{
+  Authorization = $headers.Authorization
+  "If-Match" = $created.Headers.ETag
+}
+$commentBody = @{ body = "I also tried resetting my password"; internal = $false } `
+  | ConvertTo-Json
+Invoke-RestMethod -Method Post `
+  -Uri "http://localhost:8082/v1/tickets/$($ticket.id)/comments" `
+  -Headers $commentHeaders -ContentType application/json -Body $commentBody
 Invoke-RestMethod -Method Get -Uri http://localhost:8082/v1/tickets -Headers $headers
 ```
 

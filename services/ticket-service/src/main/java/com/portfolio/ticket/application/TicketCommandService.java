@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.portfolio.ticket.domain.Priority;
 import com.portfolio.ticket.domain.Ticket;
+import com.portfolio.ticket.domain.TicketComment;
+import com.portfolio.ticket.domain.TicketHistoryRepository;
 import com.portfolio.ticket.domain.TicketRepository;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -19,18 +21,24 @@ import org.springframework.transaction.annotation.Transactional;
 public class TicketCommandService {
 
     private final TicketRepository ticketRepository;
+    private final TicketHistoryRepository historyRepository;
     private final TicketCreationIdempotencyRepository idempotencyRepository;
+    private final TicketAuditRecorder audit;
     private final TicketPolicy policy;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public TicketCommandService(
             TicketRepository ticketRepository,
+            TicketHistoryRepository historyRepository,
             TicketCreationIdempotencyRepository idempotencyRepository,
+            TicketAuditRecorder audit,
             TicketPolicy policy,
             ObjectMapper objectMapper) {
         this.ticketRepository = ticketRepository;
+        this.historyRepository = historyRepository;
         this.idempotencyRepository = idempotencyRepository;
+        this.audit = audit;
         this.policy = policy;
         this.objectMapper = objectMapper;
         this.clock = Clock.systemUTC();
@@ -66,6 +74,7 @@ public class TicketCommandService {
                         command.priority() == null ? Priority.MEDIUM : command.priority(),
                         now);
         var created = ticketRepository.create(ticket);
+        audit.ticketCreated(principal, created, now);
         idempotencyRepository.save(
                 principal.tenantId(),
                 principal.userId(),
@@ -87,12 +96,47 @@ public class TicketCommandService {
         if (ticket.version() != expectedVersion) {
             throw TicketCommandException.versionConflict(ticket.version());
         }
+        var before = audit.snapshot(ticket);
         var now = clock.instant();
 
         applyContentChanges(principal, ticket, command, now);
         applyManagementChanges(principal, ticket, command, now);
         applyStatusChange(principal, ticket, command, now);
-        return ticketRepository.save(ticket);
+        var updated = ticketRepository.save(ticket);
+        audit.ticketChanged(principal, before, updated, now);
+        return updated;
+    }
+
+    @Transactional
+    public AddedComment addComment(
+            AuthenticatedPrincipal principal,
+            UUID ticketId,
+            long expectedVersion,
+            String body,
+            boolean internal) {
+        var ticket = findVisibleTicket(principal, ticketId);
+        if (ticket.version() != expectedVersion) {
+            throw TicketCommandException.versionConflict(ticket.version());
+        }
+        if (internal) {
+            policy.requireCanAddInternalComment(principal, ticket);
+        }
+
+        var now = clock.instant();
+        ticket.recordCommentActivity(now);
+        var updatedTicket = ticketRepository.save(ticket);
+        var comment =
+                historyRepository.addComment(
+                        new TicketComment(
+                                UUID.randomUUID(),
+                                ticket.tenantId(),
+                                ticket.id(),
+                                principal.userId(),
+                                body,
+                                internal,
+                                now));
+        audit.commentAdded(principal, ticket, comment.id(), now);
+        return new AddedComment(comment, updatedTicket.version());
     }
 
     private String hash(CreateTicketCommand command) {
@@ -163,4 +207,6 @@ public class TicketCommandService {
         policy.requireCanView(principal, ticket);
         return ticket;
     }
+
+    public record AddedComment(TicketComment comment, long ticketVersion) {}
 }

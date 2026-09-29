@@ -141,7 +141,11 @@ the request body.
 
 DD-202 adds 24-hour create idempotency scoped to tenant and requester, ETag responses, required
 `If-Match` on updates, and `412 TICKET_VERSION_CONFLICT` for stale writes. Flyway migration `V002`
-stores the create request hash and original ticket reference. Comments/audit and the transactional
-outbox remain DD-203 and DD-204. Assignment currently stores an authorized Agent/Admin-selected
-user UUID; validating that the selected user is an active agent in the same tenant requires the
-later Identity user-directory integration.
+stores the create request hash and original ticket reference.
+
+DD-203 adds public/internal append-only comments and append-only audit records through Flyway
+`V003`. Customers see only public comments on their own tickets; Agent/Admin roles see both comment
+types in their tenant. Create, actual field changes, and comments are audited in the same database
+transaction. Transactional outbox publishing remains DD-204. Assignment currently stores an
+authorized Agent/Admin-selected user UUID; validating that the selected user is an active agent in
+the same tenant requires the later Identity user-directory integration.

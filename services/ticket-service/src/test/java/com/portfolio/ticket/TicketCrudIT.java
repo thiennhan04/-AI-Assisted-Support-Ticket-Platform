@@ -10,6 +10,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.portfolio.ticket.api.dto.AddCommentRequest;
 import com.portfolio.ticket.api.dto.CreateTicketRequest;
 import com.portfolio.ticket.api.dto.UpdateTicketRequest;
 import com.portfolio.ticket.domain.Priority;
@@ -83,6 +84,8 @@ class TicketCrudIT {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbc.update("DELETE FROM ticket.ticket_audit");
+        jdbc.update("DELETE FROM ticket.ticket_comment");
         jdbc.update("DELETE FROM ticket.idempotency_record");
         jdbc.update("DELETE FROM ticket.ticket");
         jdbc.execute("ALTER SEQUENCE ticket.ticket_number_seq RESTART WITH 1");
@@ -188,6 +191,50 @@ class TicketCrudIT {
                 .andExpect(status().isPreconditionFailed())
                 .andExpect(jsonPath("$.code").value("TICKET_VERSION_CONFLICT"))
                 .andExpect(jsonPath("$.currentVersion").value(1));
+    }
+
+    @Test
+    @DisplayName("Customers see public comments but only support sees internal comments")
+    void hidesInternalCommentsFromCustomers() throws Exception {
+        var ticketId = createdTicketIdAs(ACME_CUSTOMER, "Comment visibility", Priority.MEDIUM);
+
+        addCommentAs(ACME_CUSTOMER, ticketId, "Customer supplied more details", false)
+                .andExpect(status().isCreated())
+                .andExpect(header().string("ETag", "\"1\""));
+
+        addCommentAs(ACME_CUSTOMER, ticketId, "This must not be internal", true)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("TICKET_FORBIDDEN"));
+
+        addCommentAs(ACME_AGENT, ticketId, "Internal investigation note", true)
+                .andExpect(status().isCreated())
+                .andExpect(header().string("ETag", "\"2\""));
+
+        listCommentsAs(ACME_CUSTOMER, ticketId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].internal").value(false));
+
+        listCommentsAs(ACME_AGENT, ticketId)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[1].internal").value(true));
+
+        listCommentsAs(OTHER_TENANT_CUSTOMER, ticketId).andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("Every ticket mutation appends a clear audit action")
+    void auditsTicketMutations() throws Exception {
+        var ticketId = createdTicketIdAs(ACME_CUSTOMER, "Audit history", Priority.MEDIUM);
+
+        updateTicketAs(ACME_AGENT, ticketId, changePriorityTo(Priority.HIGH))
+                .andExpect(status().isOk());
+        addCommentAs(ACME_CUSTOMER, ticketId, "Customer supplied more details", false)
+                .andExpect(status().isCreated());
+
+        assertThat(storedAuditActions(ticketId))
+                .containsExactly("TICKET_CREATED", "PRIORITY_CHANGED", "COMMENT_ADDED");
     }
 
     @Test
@@ -298,6 +345,21 @@ class TicketCrudIT {
         return mvc.perform(get("/v1/tickets/{ticketId}", ticketId).with(authenticatedAs(actor)));
     }
 
+    private ResultActions addCommentAs(Actor actor, UUID ticketId, String body, boolean internal)
+            throws Exception {
+        return mvc.perform(
+                post("/v1/tickets/{ticketId}/comments", ticketId)
+                        .with(authenticatedAs(actor))
+                        .header("If-Match", "\"" + storedVersion(ticketId) + "\"")
+                        .contentType("application/json")
+                        .content(json(new AddCommentRequest(body, internal))));
+    }
+
+    private ResultActions listCommentsAs(Actor actor, UUID ticketId) throws Exception {
+        return mvc.perform(
+                get("/v1/tickets/{ticketId}/comments", ticketId).with(authenticatedAs(actor)));
+    }
+
     private ResultActions assignTicketAs(Actor actor, UUID ticketId, UUID assigneeId)
             throws Exception {
         return updateTicketAs(actor, ticketId, assignTo(assigneeId));
@@ -366,6 +428,18 @@ class TicketCrudIT {
     private long storedVersion(UUID ticketId) {
         return jdbc.queryForObject(
                 "SELECT version FROM ticket.ticket WHERE id = ?", Long.class, ticketId);
+    }
+
+    private List<String> storedAuditActions(UUID ticketId) {
+        return jdbc.queryForList(
+                """
+                SELECT action
+                FROM ticket.ticket_audit
+                WHERE ticket_id = ?
+                ORDER BY occurred_at, id
+                """,
+                String.class,
+                ticketId);
     }
 
     private String json(Object value) throws Exception {

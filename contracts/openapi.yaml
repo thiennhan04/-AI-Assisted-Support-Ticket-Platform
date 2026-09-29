@@ -158,9 +158,26 @@ paths:
   /v1/tickets/{ticketId}/comments:
     parameters:
       - $ref: '#/components/parameters/TicketId'
+    get:
+      tags: [Tickets]
+      operationId: listTicketComments
+      responses:
+        '200':
+          description: Visible comments in chronological order
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: '#/components/schemas/TicketComment'}
+        '404': {$ref: '#/components/responses/NotFound'}
     post:
       tags: [Tickets]
       operationId: addComment
+      parameters:
+        - name: If-Match
+          in: header
+          required: true
+          schema: {type: string, example: '"4"'}
       requestBody:
         required: true
         content:
@@ -172,8 +189,19 @@ paths:
                 body: {type: string, minLength: 1, maxLength: 10000}
                 internal: {type: boolean, default: false}
       responses:
-        '201': {description: Comment created}
+        '201':
+          description: Comment created
+          headers:
+            ETag:
+              schema: {type: string, example: '"5"'}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/TicketComment'}
+        '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+        '428': {$ref: '#/components/responses/PreconditionRequired'}
   /v1/tickets/{ticketId}/ai-drafts:
     parameters:
       - $ref: '#/components/parameters/TicketId'
@@ -373,6 +401,16 @@ components:
         version: {type: integer, format: int64}
         createdAt: {type: string, format: date-time}
         updatedAt: {type: string, format: date-time}
+    TicketComment:
+      type: object
+      required: [id, ticketId, authorId, body, internal, createdAt]
+      properties:
+        id: {type: string, format: uuid}
+        ticketId: {type: string, format: uuid}
+        authorId: {type: string, format: uuid}
+        body: {type: string}
+        internal: {type: boolean}
+        createdAt: {type: string, format: date-time}
     AiAnalysis:
       type: object
       properties:

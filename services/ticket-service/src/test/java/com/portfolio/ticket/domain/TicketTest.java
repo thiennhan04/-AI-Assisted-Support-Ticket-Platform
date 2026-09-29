@@ -68,6 +68,8 @@ class TicketTest {
                                         "Changed description",
                                         NOW.plusSeconds(1)))
                 .isInstanceOf(ClosedTicketMutationException.class);
+        assertThatThrownBy(() -> ticket.recordCommentActivity(NOW.plusSeconds(1)))
+                .isInstanceOf(ClosedTicketMutationException.class);
 
         ticket.transitionTo(TicketStatus.IN_PROGRESS, NOW.plusSeconds(2));
         ticket.updateContent("Changed subject", "Changed description", NOW.plusSeconds(3));
@@ -83,6 +85,15 @@ class TicketTest {
 
         assertThat(ticket.assigneeId()).isEqualTo(agentId);
         assertThat(ticket.status()).isEqualTo(TicketStatus.IN_PROGRESS);
+    }
+
+    @Test
+    void reapplyingTheSameValueDoesNotMarkTicketAsUpdated() {
+        var ticket = openTicket();
+
+        ticket.changePriority(Priority.MEDIUM, NOW.plusSeconds(1));
+
+        assertThat(ticket.updatedAt()).isEqualTo(NOW);
     }
 
     private Ticket openTicket() {

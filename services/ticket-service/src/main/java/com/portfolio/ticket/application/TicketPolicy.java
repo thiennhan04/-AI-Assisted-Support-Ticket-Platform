@@ -31,6 +31,13 @@ public class TicketPolicy {
         }
     }
 
+    public void requireCanAddInternalComment(AuthenticatedPrincipal principal, Ticket ticket) {
+        requireCanView(principal, ticket);
+        if (!isSupport(principal)) {
+            throw new TicketForbiddenException();
+        }
+    }
+
     public void requireCanTransition(
             AuthenticatedPrincipal principal, Ticket ticket, TicketStatus target) {
         requireCanView(principal, ticket);

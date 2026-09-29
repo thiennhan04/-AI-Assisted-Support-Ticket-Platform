@@ -1,6 +1,8 @@
 package com.portfolio.ticket.api;
 
+import com.portfolio.ticket.api.dto.AddCommentRequest;
 import com.portfolio.ticket.api.dto.CreateTicketRequest;
+import com.portfolio.ticket.api.dto.TicketCommentResponse;
 import com.portfolio.ticket.api.dto.TicketPageResponse;
 import com.portfolio.ticket.api.dto.TicketResponse;
 import com.portfolio.ticket.api.dto.UpdateTicketRequest;
@@ -18,6 +20,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
 import java.net.URI;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -107,6 +110,35 @@ public class TicketController {
         var ticket =
                 commands.update(principal, ticketId, expectedVersion(ifMatch), request.toCommand());
         return ResponseEntity.ok().eTag(etag(ticket.version())).body(TicketResponse.from(ticket));
+    }
+
+    @PostMapping("/{ticketId}/comments")
+    public ResponseEntity<TicketCommentResponse> addComment(
+            @AuthenticationPrincipal AuthenticatedPrincipal principal,
+            @PathVariable UUID ticketId,
+            @RequestHeader(value = "If-Match", required = false) String ifMatch,
+            @Valid @RequestBody AddCommentRequest request) {
+        var result =
+                commands.addComment(
+                        principal,
+                        ticketId,
+                        expectedVersion(ifMatch),
+                        request.body(),
+                        request.internal());
+        return ResponseEntity.created(
+                        URI.create(
+                                "/v1/tickets/" + ticketId + "/comments/" + result.comment().id()))
+                .eTag(etag(result.ticketVersion()))
+                .body(TicketCommentResponse.from(result.comment()));
+    }
+
+    @GetMapping("/{ticketId}/comments")
+    public List<TicketCommentResponse> listComments(
+            @AuthenticationPrincipal AuthenticatedPrincipal principal,
+            @PathVariable UUID ticketId) {
+        return queries.listComments(principal, ticketId).stream()
+                .map(TicketCommentResponse::from)
+                .toList();
     }
 
     private long expectedVersion(String ifMatch) {
