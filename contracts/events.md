@@ -1,8 +1,8 @@
-# Event Contracts
+# Event contract
 
 ## 1. Envelope
 
-All events use JSON UTF-8 and this envelope:
+Mọi event dùng JSON UTF-8 và envelope sau:
 
 ```json
 {
@@ -19,20 +19,20 @@ All events use JSON UTF-8 and this envelope:
 }
 ```
 
-Rules:
+Quy tắc:
 
-- `eventId` is globally unique and immutable across retries.
-- Consumers ignore unknown additive fields.
-- Breaking payload changes require a new event type suffix.
-- Timestamps are UTC ISO-8601.
-- PII is minimized; attachments and secrets are never embedded.
-- Broker persistence, publisher confirms and durable queues are required.
+- `eventId` duy nhất toàn hệ thống và không đổi khi retry.
+- Consumer bỏ qua field bổ sung mà nó không biết.
+- Thay đổi payload gây breaking change phải dùng hậu tố event type mới.
+- Timestamp dùng UTC ISO-8601.
+- Giảm thiểu PII; không bao giờ nhúng attachment hoặc secret.
+- Bắt buộc có broker persistence, publisher confirm và durable queue.
 
-## 2. Exchange and routing
+## 2. Exchange và routing
 
 Topic exchange: `platform.domain.x`.
 
-| Event type/routing key | Producer | Main consumer |
+| Event type/routing key | Producer | Consumer chính |
 |---|---|---|
 | `ticket.created.v1` | Ticket | AI Worker |
 | `ticket.analysis.requested.v1` | Ticket | AI Worker |
@@ -45,9 +45,12 @@ Topic exchange: `platform.domain.x`.
 | `knowledge.ingest.requested.v1` | Knowledge | AI Worker |
 | `knowledge.document.activated.v1` | Knowledge | audit/metrics |
 
-## 3. Payload definitions
+## 3. Định nghĩa payload
 
 ### `ticket.created.v1`
+
+Schema: [`event-schemas/ticket.created.v1.schema.json`](event-schemas/ticket.created.v1.schema.json).
+Event type và RabbitMQ routing key đều là `ticket.created.v1`.
 
 ```json
 {
@@ -96,7 +99,7 @@ Topic exchange: `platform.domain.x`.
 }
 ```
 
-Ticket Service marks a result as stale when `inputContentVersion` is older than current content version. It may display the result but must not apply suggestions automatically.
+Ticket Service đánh dấu kết quả là stale khi `inputContentVersion` cũ hơn content version hiện tại. Service có thể hiển thị kết quả nhưng không được tự động áp dụng suggestion.
 
 ### `ai.draft.completed.v1`
 
@@ -121,23 +124,32 @@ Ticket Service marks a result as stale when `inputContentVersion` is older than 
 }
 ```
 
-### Failure events
+### Failure event
 
-Fields: `jobId`, `ticketId`, `errorCode`, `retryable`, `attemptCount`, `failedAt`. Never include raw provider error bodies because they may contain prompts or user content.
+Các field: `jobId`, `ticketId`, `errorCode`, `retryable`, `attemptCount`, `failedAt`. Không bao giờ chứa raw error body từ provider vì nó có thể chứa prompt hoặc nội dung người dùng.
 
-## 4. Delivery semantics
+## 4. Ngữ nghĩa giao nhận
 
-- At-least-once delivery.
-- Producer writes outbox with domain transaction.
-- Publisher marks row only after broker confirmation.
-- Consumer applies business change and `processed_event` marker atomically.
-- Message ordering is not assumed globally. State/version checks handle reorder.
-- Poison messages move to DLQ after configured attempts.
+- Giao nhận at-least-once.
+- Producer ghi outbox cùng domain transaction.
+- Publisher chỉ đánh dấu row sau broker confirmation.
+- Consumer áp dụng business change và `processed_event` marker một cách nguyên tử.
+- Không giả định thứ tự message trên toàn hệ thống. State/version check xử lý việc đảo thứ tự.
+- Poison message chuyển vào DLQ sau số lần thử đã cấu hình.
 
-## 5. Contract compatibility
+### Vòng đời outbox của Ticket Service
 
-- Event JSON schemas should be added under `contracts/event-schemas/` when coding begins.
-- Producers run schema validation in unit tests.
-- Consumers maintain fixtures for current and previous supported versions.
-- Contract change PRs require producer and consumer owners.
+1. Ticket Service thêm `ticket.created.v1` vào `ticket.outbox_event` trong cùng database transaction tạo ticket.
+2. Background publisher claim row sẵn sàng bằng `FOR UPDATE SKIP LOCKED`, commit claim ngắn rồi publish bên ngoài ticket transaction.
+3. Row chỉ thành `PUBLISHED` sau khi RabbitMQ xác nhận persistent message và không trả về do unroutable.
+4. Publish bị reject, unroutable, timeout hoặc thất bại sẽ trả row về `PENDING` với exponential backoff. Claim `PROCESSING` cũ đủ điều kiện xử lý lại sau claim timeout.
+5. Nếu crash sau khi RabbitMQ nhận message nhưng trước database update, event có thể được publish lại. Consumer vì thế phải deduplicate theo `eventId` bất biến.
 
+Trong DD-204, tạo ticket là producer action duy nhất đã triển khai. Event yêu cầu analysis/draft được thêm cùng API tương ứng thay vì tự nghĩ ra update/comment event chưa có tài liệu. Trước khi DD-501 tạo và bind durable consumer queue, unroutable event vẫn nằm trong outbox thay vì bị đánh dấu đã giao.
+
+## 5. Tương thích contract
+
+- Thêm event JSON schema dưới `contracts/event-schemas/` khi bắt đầu code.
+- Producer chạy schema validation trong unit test.
+- Consumer duy trì fixture cho phiên bản hiện tại và phiên bản trước còn hỗ trợ.
+- PR đổi contract cần owner của cả producer và consumer.

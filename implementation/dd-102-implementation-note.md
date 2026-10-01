@@ -1,45 +1,34 @@
-# DD-102 Implementation Note
+# Ghi chú triển khai DD-102
 
-## Delivered scope
+## Phạm vi đã bàn giao
 
-- Added `POST /v1/auth/refresh` with single-use refresh-token rotation.
-- Added `POST /v1/auth/logout` with idempotent token-family revocation.
-- Added pessimistic locking for refresh-session lookup and atomic replacement linking.
-- Added reuse detection that commits family revocation before returning
-  `AUTH_REFRESH_REUSE_DETECTED`.
-- Rejected unknown, expired, revoked, suspended-tenant, disabled-user, invited-user, and actively
-  locked-user sessions with `AUTH_INVALID_REFRESH_TOKEN`.
-- Added `Cache-Control: no-store` and `Pragma: no-cache` to login and refresh responses.
+- Thêm `POST /v1/auth/refresh` với cơ chế rotation refresh token dùng một lần.
+- Thêm `POST /v1/auth/logout` thu hồi token family theo cách idempotent.
+- Thêm pessimistic locking khi tìm refresh session và liên kết replacement nguyên tử.
+- Thêm phát hiện reuse, commit việc thu hồi family trước khi trả `AUTH_REFRESH_REUSE_DETECTED`.
+- Từ chối session không tồn tại, hết hạn, đã thu hồi, tenant suspended, user disabled/invited/đang bị khóa bằng `AUTH_INVALID_REFRESH_TOKEN`.
+- Thêm `Cache-Control: no-store` và `Pragma: no-cache` cho response login và refresh.
 
 ## Persistence
 
-- Expanded the refresh-session domain/JPA mapping to include `replaced_by_id`, `revoked_at`, and
-  `last_used_at`.
-- Added Flyway `V002__refresh_rotation_constraints.sql` with a self-referencing replacement
-  foreign key and a partial unique replacement index.
-- Kept raw refresh tokens outside PostgreSQL; lookup and persistence use only SHA-256 hashes.
+- Mở rộng domain/JPA mapping của refresh session với `replaced_by_id`, `revoked_at`, `last_used_at`.
+- Thêm Flyway `V002__refresh_rotation_constraints.sql` với self-referencing replacement foreign key và partial unique replacement index.
+- Không lưu raw refresh token trong PostgreSQL; tra cứu và persistence chỉ dùng SHA-256 hash.
 
-## Contract and design
+## Contract và thiết kế
 
-- Added the logout endpoint and reusable strict `RefreshTokenRequest` schema to OpenAPI.
-- Updated the Identity and security designs with rotation, reuse, logout, transaction, and
-  no-store behavior.
-- Captured detailed choices in `implementation/dd-102-contract-decisions.md`.
+- Thêm logout endpoint và strict schema `RefreshTokenRequest` dùng lại được vào OpenAPI.
+- Cập nhật thiết kế Identity và security với rotation, reuse, logout, transaction và hành vi no-store.
+- Ghi lại lựa chọn chi tiết tại `implementation/dd-102-contract-decisions.md`.
 
-## Verification performed
+## Kiểm tra đã thực hiện
 
-- Full monorepo `./mvnw.cmd -B clean verify`: all seven modules passed Enforcer, compilation,
-  formatting, unit-test, integration-test, and packaging phases.
-- Identity unit tests: 8 passed.
-- Identity Testcontainers integration tests: 15 passed against PostgreSQL and Redis.
-- The concurrency test launched two refresh requests for one token and confirmed exactly one
-  `200`, one `401 AUTH_REFRESH_REUSE_DETECTED`, and no active row left in the family.
-- Clean-database Flyway execution successfully applied `V001` and `V002`, followed by Hibernate
-  schema validation.
-- Local runtime smoke test reached Flyway `v002` and passed login, rotation, idempotent logout,
-  post-logout rejection, and reuse-family revocation over real HTTP.
-- Rebuilt `ticket-platform/identity-service:0.1.0-SNAPSHOT` successfully with Spring Boot
-  Buildpacks after verification.
+- Toàn monorepo `./mvnw.cmd -B clean verify`: cả bảy module vượt qua Enforcer, compile, format, unit test, integration test và package.
+- Identity unit test: 8 test thành công.
+- Identity integration test dùng Testcontainers: 15 test thành công với PostgreSQL và Redis.
+- Concurrency test gửi hai refresh request cho một token và xác nhận đúng một response `200`, một response `401 AUTH_REFRESH_REUSE_DETECTED`, không còn row active trong family.
+- Flyway chạy trên database sạch, áp dụng thành công `V001`, `V002`, sau đó Hibernate schema validation thành công.
+- Local smoke test đạt Flyway `v002` và kiểm tra thành công login, rotation, logout idempotent, từ chối sau logout, thu hồi family khi reuse qua HTTP thật.
+- Buildpack tạo lại thành công `ticket-platform/identity-service:0.1.0-SNAPSHOT`.
 
-The local PostgreSQL volume now includes migration `v002` and refresh-session rows produced by the
-smoke test. PostgreSQL and Redis were left running; the temporary Identity JVM was stopped.
+PostgreSQL volume local hiện có migration `v002` và các refresh-session row từ smoke test. PostgreSQL và Redis vẫn chạy; JVM Identity tạm đã dừng.

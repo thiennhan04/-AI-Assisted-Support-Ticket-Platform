@@ -1,37 +1,31 @@
-# DD-203 Implementation Note
+# Ghi chú triển khai DD-203
 
-## Delivered behavior
+## Hành vi đã bàn giao
 
-- `POST /v1/tickets/{ticketId}/comments` appends a public or internal comment and returns the new
-  ticket ETag.
-- `GET /v1/tickets/{ticketId}/comments` returns comments in chronological order.
-- Customers can add and see public comments only on their own tickets.
-- Agent/Admin callers can add and see public and internal comments in their tenant.
-- Closed tickets reject new comments until an Admin reopens the ticket.
-- Ticket creation, actual field changes, assignment-driven status changes, and added comments write
-  append-only audit rows in the same transaction as the mutation.
-- Content audit records intentionally omit subject/description values; the audit says content
-  changed without copying sensitive ticket text.
+- `POST /v1/tickets/{ticketId}/comments` thêm public/internal comment và trả ETag mới của ticket.
+- `GET /v1/tickets/{ticketId}/comments` trả comment theo thứ tự thời gian.
+- Customer chỉ có thể thêm/xem public comment trên ticket của chính mình.
+- Agent/Admin có thể thêm/xem public và internal comment trong tenant.
+- Ticket đã đóng từ chối comment mới cho đến khi Admin mở lại.
+- Việc tạo ticket, thay đổi field thật sự, status change do assignment và thêm comment đều ghi append-only audit row trong cùng transaction với mutation.
+- Content audit cố ý không lưu giá trị subject/description; audit chỉ nói content đã thay đổi mà không sao chép nội dung ticket nhạy cảm.
 
-## Why these classes exist
+## Lý do các class tồn tại
 
-- `TicketComment` represents one immutable conversation entry.
-- `TicketHistoryRepository` is the single persistence contract for append-only comments and audit.
-- `JdbcTicketHistoryRepository` contains the corresponding SQL in one place.
-- `TicketAuditRecorder` compares ticket state and translates real changes into audit actions. This
-  keeps `TicketCommandService` focused on the readable create, update, and add-comment flows.
-- `AddCommentRequest` and `TicketCommentResponse` are the transport shapes. No extra comment service
-  or one-method command class was introduced.
+- `TicketComment` biểu diễn một conversation entry bất biến.
+- `TicketHistoryRepository` là persistence contract duy nhất cho comment và audit kiểu append-only.
+- `JpaTicketHistoryRepositoryAdapter` ánh xạ comment/audit qua các Spring Data repository tương ứng.
+- `TicketAuditRecorder` so sánh state ticket và chuyển thay đổi thật thành audit action. Nhờ đó `TicketCommandService` tập trung vào các flow create, update, add-comment dễ đọc.
+- `AddCommentRequest` và `TicketCommentResponse` là transport shape. Không tạo thêm comment service hoặc command class chỉ có một method.
 
-## Short review path
+## Đường review ngắn
 
-1. Read `TicketCrudIT.hidesInternalCommentsFromCustomers` and `auditsTicketMutations`.
-2. Read the two comment endpoints in `TicketController`.
-3. Read `TicketCommandService.addComment` and `TicketQueryService.listComments`.
-4. Read `TicketPolicy.requireCanAddInternalComment`.
-5. Read `TicketAuditRecorder`, then `JdbcTicketHistoryRepository` and Flyway `V003`.
+1. Đọc `TicketCrudIT.hidesInternalCommentsFromCustomers` và `auditsTicketMutations`.
+2. Đọc hai comment endpoint trong `TicketController`.
+3. Đọc `TicketCommandService.addComment` và `TicketQueryService.listComments`.
+4. Đọc `TicketPolicy.requireCanAddInternalComment`.
+5. Đọc `TicketAuditRecorder`, sau đó `JpaTicketHistoryRepositoryAdapter` và Flyway `V003`.
 
-## Verification
+## Kiểm tra
 
-`./mvnw.cmd -pl services/ticket-service -am clean verify` passed with 11 unit/security tests and 13
-PostgreSQL Testcontainers integration tests. Flyway successfully applied V001, V002, and V003.
+`./mvnw.cmd -pl services/ticket-service -am clean verify` thành công với 11 unit/security test và 13 PostgreSQL Testcontainers integration test. Flyway áp dụng thành công V001, V002, V003.

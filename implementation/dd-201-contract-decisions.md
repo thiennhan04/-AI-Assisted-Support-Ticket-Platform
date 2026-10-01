@@ -1,38 +1,29 @@
-# DD-201 Contract Decisions
+# Quyết định contract DD-201
 
-## Tenant and caller identity
+## Tenant và danh tính caller
 
-- `tenantId` and `requesterId` never come from request input. They are derived from the verified
-  `AuthenticatedPrincipal` created by DD-103.
-- Every repository lookup includes `tenant_id`. A ticket in another tenant is returned as
-  `404 TICKET_NOT_FOUND` to avoid revealing its existence.
-- CUSTOMER list and detail access are additionally restricted to tickets where the caller is the
-  requester. AGENT and ADMIN can view all tickets in their tenant.
-- Unknown JSON properties are rejected, so sending a client-controlled `tenantId` fails with 400.
+- `tenantId` và `requesterId` không bao giờ lấy từ request input. Chúng được lấy từ `AuthenticatedPrincipal` đã xác minh do DD-103 tạo.
+- Mọi repository lookup đều có `tenant_id`. Ticket thuộc tenant khác được trả thành `404 TICKET_NOT_FOUND` để không tiết lộ sự tồn tại.
+- Quyền xem danh sách/chi tiết của CUSTOMER còn bị giới hạn ở ticket mà caller là requester. AGENT và ADMIN xem được mọi ticket trong tenant của mình.
+- JSON property không biết bị từ chối, nên client gửi `tenantId` tự kiểm soát sẽ nhận 400.
 
-## Commands and authorization
+## Command và phân quyền
 
-- Any authenticated platform role can create a ticket; the caller becomes its requester.
-- CUSTOMER can edit subject/description only on their own OPEN ticket.
-- AGENT and ADMIN can change content, priority, category, and assignment within their tenant.
-- CUSTOMER may perform only the requester-side transitions from `WAITING_CUSTOMER` to
-  `IN_PROGRESS` and from `RESOLVED` to `IN_PROGRESS` or `CLOSED`.
-- AGENT/ADMIN perform support-side transitions. Reopening `CLOSED` is ADMIN-only.
-- The assignee UUID is currently an opaque authorized reference. Checking that it represents an
-  active same-tenant agent is deferred until an Identity user-directory contract is available.
+- Bất kỳ platform role đã xác thực nào cũng có thể tạo ticket; caller trở thành requester.
+- CUSTOMER chỉ có thể sửa subject/description trên ticket OPEN của chính mình.
+- AGENT và ADMIN có thể thay đổi content, priority, category và assignment trong tenant.
+- CUSTOMER chỉ được thực hiện transition phía requester: `WAITING_CUSTOMER` sang `IN_PROGRESS`, và `RESOLVED` sang `IN_PROGRESS` hoặc `CLOSED`.
+- AGENT/ADMIN thực hiện transition phía hỗ trợ. Chỉ ADMIN được mở lại ticket `CLOSED`.
+- Assignee UUID hiện là tham chiếu opaque đã được phân quyền. Việc xác minh đó là agent active cùng tenant được hoãn đến khi có contract user-directory từ Identity.
 
-## State and persistence
+## State và persistence
 
-- Ticket numbers use the database sequence `ticket.ticket_number_seq` and the format
-  `SUP-%08d`; UUID remains the canonical identifier.
-- `contentVersion` increments only when subject or description changes. JPA `version` protects the
-  persisted aggregate and is returned to clients.
-- The Flyway migration owns the Ticket schema, constraints, indexes, and full-text GIN index.
-- DD-201 exposes `q` behavior as case-insensitive subject/description matching. Query-plan tuning to
-  use PostgreSQL full-text operators may be introduced without changing the HTTP contract.
+- Ticket number dùng database sequence `ticket.ticket_number_seq` và format `SUP-%08d`; UUID vẫn là định danh chuẩn.
+- `contentVersion` chỉ tăng khi subject hoặc description thay đổi. JPA `version` bảo vệ aggregate đã lưu và được trả cho client.
+- Flyway migration sở hữu schema Ticket, constraint, index và full-text GIN index.
+- DD-201 triển khai `q` bằng phép tìm subject/description không phân biệt hoa thường. Có thể tối ưu query plan bằng PostgreSQL full-text operator mà không đổi HTTP contract.
 
-## Deliberate epic boundaries
+## Ranh giới epic có chủ đích
 
-- The published OpenAPI already describes `Idempotency-Key` and `If-Match`/ETag as the target API.
-  Enforcement is DD-202, so DD-201 does not pretend those guarantees exist yet.
-- Comments/audit are DD-203. Transactional outbox publishing is DD-204.
+- OpenAPI đã mô tả `Idempotency-Key` và `If-Match`/ETag là API mục tiêu. Việc bắt buộc các cơ chế này thuộc DD-202, nên DD-201 không giả vờ đã có các bảo đảm đó.
+- Comment/audit thuộc DD-203. Transactional outbox thuộc DD-204.

@@ -1,150 +1,149 @@
-# Implementation Backlog and Acceptance Criteria
+# Backlog triển khai và tiêu chí chấp nhận
 
-## Epic 0 - Repository and infrastructure
+## Epic 0 - Repository và hạ tầng
 
-### DD-001 Bootstrap monorepo
+### DD-001 Khởi tạo monorepo
 
-- Create five Spring Boot modules and allowed shared libraries.
-- Add Java 21 toolchain, formatting, test and container build.
-- Acceptance: all modules compile/test from root; no service domain dependency.
+- Tạo năm Spring Boot module và các thư viện dùng chung được phép.
+- Thêm Java 21 toolchain, format, test và container build.
+- Chấp nhận: mọi module compile/test từ root; không có dependency domain giữa các service.
 
-### DD-002 Local infrastructure
+### DD-002 Hạ tầng local
 
-- Compose PostgreSQL databases/users, RabbitMQ, Redis, MinIO, OTel, Prometheus and Grafana.
-- Acceptance: health checks green; data volumes persist; credentials overridden through environment.
+- Dùng Compose cho PostgreSQL database/user, RabbitMQ, Redis, MinIO, OTel, Prometheus và Grafana.
+- Chấp nhận: health check xanh; data volume bền vững; credential được ghi đè qua môi trường.
 
 ## Epic 1 - Identity
 
-### DD-101 Login and JWT
+### DD-101 Login và JWT
 
-- Implement tenant/user/roles, password hashing, login and RS256 signing.
-- Acceptance: valid token contains required claims; wrong credentials use generic 401.
+- Triển khai tenant/user/role, password hashing, login và ký RS256.
+- Chấp nhận: token hợp lệ chứa các claim bắt buộc; credential sai dùng response 401 chung.
 
 ### DD-102 Refresh rotation
 
-- Implement rotating token family, logout and reuse detection.
-- Acceptance: two concurrent refresh calls yield one success; reuse revokes family.
+- Triển khai rotating token family, logout và phát hiện reuse.
+- Chấp nhận: hai refresh call đồng thời có một lần thành công; reuse thu hồi cả family.
 
-### DD-103 Resource-server integration
+### DD-103 Tích hợp resource server
 
-- Configure other services with JWKS validation and principal mapping.
-- Acceptance: wrong issuer/audience/tenant claim rejected; key rotation fixture passes.
+- Cấu hình các service khác xác minh JWKS và ánh xạ principal.
+- Chấp nhận: từ chối issuer/audience/tenant claim sai; fixture key rotation thành công.
 
 ## Epic 2 - Ticket core
 
 ### DD-201 Ticket CRUD/query
 
-- Implement aggregate, state machine, list filters and authorization.
-- Acceptance: role/tenant matrix and all transitions tested.
+- Triển khai aggregate, state machine, list filter và phân quyền.
+- Chấp nhận: role/tenant matrix và mọi transition được kiểm thử.
 
 ### DD-202 Optimistic locking/idempotency
 
-- Add ETag/If-Match and Idempotency-Key handling.
-- Acceptance: stale update returns 412; identical create replay returns original resource.
+- Thêm xử lý ETag/If-Match và Idempotency-Key.
+- Chấp nhận: update dùng version cũ trả 412; replay create giống hệt trả resource ban đầu.
 
-### DD-203 Comments and audit
+### DD-203 Comment và audit
 
-- Add public/internal comments and append-only audit.
-- Acceptance: customer cannot see internal comments; every mutation emits audit.
+- Thêm public/internal comment và append-only audit.
+- Chấp nhận: customer không thấy internal comment; mọi mutation đều tạo audit.
 
 ### DD-204 Transactional outbox
 
-- Persist/publish ticket events using broker confirms.
-- Acceptance: simulated publish failure leaves retryable row; no lost event after restart.
+- Lưu/phát ticket event dùng broker confirm.
+- Chấp nhận: mô phỏng publish lỗi vẫn để row có thể retry; không mất event sau restart.
 
 ## Epic 3 - Knowledge
 
-### DD-301 Upload workflow
+### DD-301 Luồng upload
 
-- Implement document metadata, signed upload and completion verification.
-- Acceptance: MIME/size/checksum enforced; incomplete uploads expire.
+- Triển khai document metadata, signed upload và xác minh hoàn tất.
+- Chấp nhận: bắt buộc MIME/size/checksum; upload chưa hoàn tất sẽ hết hạn.
 
-### DD-302 Extraction and chunking
+### DD-302 Trích xuất và chia chunk
 
-- Implement PDF/DOCX/TXT adapters and deterministic chunker.
-- Acceptance: fixtures preserve page/heading metadata; empty/encrypted documents fail safely.
+- Triển khai adapter PDF/DOCX/TXT và deterministic chunker.
+- Chấp nhận: fixture giữ metadata trang/heading; tài liệu rỗng/mã hóa thất bại an toàn.
 
-### DD-303 Embedding and vector search
+### DD-303 Embedding và vector search
 
-- Implement fake and real embedding ports plus pgvector query.
-- Acceptance: active-version/tenant/ACL filter occurs in SQL; Recall@5 evaluation runnable.
+- Triển khai fake/real embedding port và truy vấn pgvector.
+- Chấp nhận: bộ lọc active-version/tenant/ACL nằm trong SQL; chạy được đánh giá Recall@5.
 
-### DD-304 Version replacement/deletion
+### DD-304 Thay thế/xóa phiên bản
 
-- Stage replacement and atomically switch active version.
-- Acceptance: no search downtime; deletion removes visibility immediately.
+- Stage phiên bản thay thế và chuyển active nguyên tử.
+- Chấp nhận: tìm kiếm không gián đoạn; thao tác xóa loại document khỏi kết quả ngay lập tức.
 
 ## Epic 4 - AI Orchestration
 
-### DD-401 AI job lifecycle
+### DD-401 Vòng đời AI job
 
-- Implement job idempotency, input hashing and state machine.
-- Acceptance: repeated identical request reuses job; conflicting input returns 409.
+- Triển khai job idempotency, input hash và state machine.
+- Chấp nhận: request giống hệt dùng lại job; input xung đột trả 409.
 
-### DD-402 Ticket analysis
+### DD-402 Phân tích ticket
 
-- Implement prompt version, structured output and validation.
-- Acceptance: output schema always validated; one repair only; metrics recorded.
+- Triển khai prompt version, structured output và validation.
+- Chấp nhận: luôn kiểm tra output schema; chỉ repair một lần; ghi nhận metric.
 
-### DD-403 Grounded draft
+### DD-403 Bản nháp dựa trên tri thức
 
-- Integrate Knowledge search and citation validation.
-- Acceptance: fabricated citation rejected; no knowledge produces flagged/refusal-style draft.
+- Tích hợp Knowledge search và kiểm tra citation.
+- Chấp nhận: từ chối citation bịa đặt; không có tri thức tạo bản nháp có cờ cảnh báo/từ chối phù hợp.
 
-### DD-404 Provider resilience/cost
+### DD-404 Khả năng phục hồi/chi phí provider
 
-- Implement timeouts, retry, circuit breaker, token/cost record and budget.
-- Acceptance: provider outage does not affect ticket API; exhausted tenant makes no provider call.
+- Triển khai timeout, retry, circuit breaker, token/cost record và budget.
+- Chấp nhận: provider outage không ảnh hưởng ticket API; tenant hết budget không gọi provider.
 
-## Epic 5 - Worker and projections
+## Epic 5 - Worker và projection
 
-### DD-501 Event consumers/retry/DLQ
+### DD-501 Event consumer/retry/DLQ
 
-- Implement separate queues/pools and retry schedule.
-- Acceptance: duplicate delivery creates one job; poison message reaches DLQ with safe error.
+- Triển khai queue/pool riêng và lịch retry.
+- Chấp nhận: delivery trùng chỉ tạo một job; poison message tới DLQ với lỗi an toàn.
 
-### DD-502 Ticket AI projections
+### DD-502 Ticket AI projection
 
-- Consume analysis/draft results idempotently.
-- Acceptance: out-of-date result marked stale; accepted ticket fields not overwritten.
+- Consume kết quả analysis/draft theo cách idempotent.
+- Chấp nhận: kết quả cũ bị đánh dấu stale; field ticket đã chấp nhận không bị ghi đè.
 
-### DD-503 Draft approval/feedback
+### DD-503 Phê duyệt draft/feedback
 
-- Add agent approval as normal comment and feedback event.
-- Acceptance: original draft immutable; edited sent content audited.
+- Thêm thao tác agent phê duyệt dưới dạng comment thường và feedback event.
+- Chấp nhận: draft gốc bất biến; nội dung đã chỉnh sửa và gửi được audit.
 
-## Epic 6 - Quality and operations
+## Epic 6 - Chất lượng và vận hành
 
-### DD-601 Observability
+### DD-601 Khả năng quan sát
 
-- Add metrics/tracing/dashboards and alerts.
-- Acceptance: one trace spans ticket event, Worker, Orchestrator, Knowledge and provider adapter.
+- Thêm metric/tracing/dashboard và alert.
+- Chấp nhận: một trace đi xuyên suốt ticket event, Worker, Orchestrator, Knowledge và provider adapter.
 
-### DD-602 Security hardening
+### DD-602 Tăng cường bảo mật
 
-- Add rate limits, upload scanning hook, PII redaction and prompt-injection fixtures.
-- Acceptance: security tests in security design pass.
+- Thêm rate limit, hook quét upload, PII redaction và fixture prompt injection.
+- Chấp nhận: các test trong security design thành công.
 
-### DD-603 Evaluation and performance
+### DD-603 Đánh giá và hiệu năng
 
-- Add classification/RAG datasets and load scenarios.
-- Acceptance: report actual metrics; release gates satisfied or exceptions documented.
+- Thêm dataset phân loại/RAG và kịch bản tải.
+- Chấp nhận: báo cáo metric thực tế; đạt release gate hoặc ghi rõ ngoại lệ.
 
-### DD-604 Demo and documentation
+### DD-604 Demo và tài liệu
 
-- Add architecture diagram, API examples, demo seed and 2-minute scenario.
-- Acceptance: a new developer can run fake-provider end-to-end flow from clean machine using documented commands.
+- Thêm sơ đồ kiến trúc, API example, demo seed và kịch bản hai phút.
+- Chấp nhận: developer mới chạy được end-to-end flow với fake provider trên máy sạch theo lệnh đã ghi.
 
-## Suggested eight-week slicing
+## Gợi ý chia theo tám tuần
 
-| Week | Deliverable |
+| Tuần | Nội dung bàn giao |
 |---|---|
-| 1 | DD-001..002, DD-101, basic resource-server config |
+| 1 | DD-001..002, DD-101, cấu hình resource server cơ bản |
 | 2 | DD-201..203 |
 | 3 | DD-204, DD-301..302 |
-| 4 | DD-303..304 with fake embeddings |
-| 5 | DD-401..402 with fake model |
-| 6 | DD-403..404 and Worker consumers |
-| 7 | projections, approval, security and observability |
-| 8 | evaluation, load test, demo and CV evidence |
-
+| 4 | DD-303..304 với fake embedding |
+| 5 | DD-401..402 với fake model |
+| 6 | DD-403..404 và Worker consumer |
+| 7 | Projection, approval, security và observability |
+| 8 | Evaluation, load test, demo và bằng chứng cho CV |

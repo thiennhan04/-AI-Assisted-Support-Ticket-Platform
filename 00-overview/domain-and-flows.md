@@ -1,41 +1,44 @@
-# Domain Model and Core Flows
+# Domain model và các luồng chính
 
-## 1. Core aggregates
+## 1. Các aggregate chính
 
 ### Ticket aggregate
 
-Fields: `id`, `tenantId`, `number`, `requesterId`, `assigneeId`, `subject`, `description`, `category`, `priority`, `status`, `version`, timestamps.
+Các field: `id`, `tenantId`, `number`, `requesterId`, `assigneeId`, `subject`, `description`,
+`category`, `priority`, `status`, `version` và timestamp.
 
-Invariants:
+Các bất biến:
 
-- Requester, ticket and assignee belong to the same tenant.
-- Only Support Agent or Admin may assign tickets.
-- Closed tickets are immutable except for reopen and audit metadata.
-- Status commands require optimistic-lock version.
-- AI can suggest category/priority but cannot directly mutate accepted values.
+- Requester, ticket và assignee phải thuộc cùng tenant.
+- Chỉ Support Agent hoặc Admin được assign ticket.
+- Ticket đã đóng không được sửa, ngoại trừ reopen và audit metadata.
+- Lệnh đổi trạng thái phải kèm optimistic-lock version.
+- AI chỉ được đề xuất category/priority, không được trực tiếp thay đổi giá trị đã chấp nhận.
 
 ### Knowledge document aggregate
 
-Fields: `id`, `tenantId`, `title`, `sourceKey`, `mimeType`, `checksum`, `status`, `visibility`, timestamps.
+Các field: `id`, `tenantId`, `title`, `sourceKey`, `mimeType`, `checksum`, `status`, `visibility` và
+timestamp.
 
-Invariants:
+Các bất biến:
 
-- Only Admin may upload or publish.
-- Only `ACTIVE` documents participate in retrieval.
-- A new checksum version invalidates prior chunks after successful replacement ingestion.
-- Deleted documents are removed from retrieval immediately and physically purged asynchronously.
+- Chỉ Admin được upload hoặc publish.
+- Chỉ tài liệu `ACTIVE` được dùng khi retrieval.
+- Phiên bản checksum mới chỉ vô hiệu hóa chunk cũ sau khi ingest thay thế thành công.
+- Tài liệu bị xóa phải biến mất khỏi retrieval ngay và được xóa vật lý bất đồng bộ.
 
 ### AI job aggregate
 
-Fields: `id`, `tenantId`, `jobType`, `subjectType`, `subjectId`, `inputHash`, `status`, `promptVersion`, `model`, `attemptCount`, usage, timestamps.
+Các field: `id`, `tenantId`, `jobType`, `subjectType`, `subjectId`, `inputHash`, `status`,
+`promptVersion`, `model`, `attemptCount`, usage và timestamp.
 
-Invariants:
+Các bất biến:
 
-- `(tenantId, jobType, subjectId, inputHash)` is logically idempotent.
-- Terminal jobs are `SUCCEEDED`, `FAILED`, `CANCELLED` or `REJECTED`.
-- Output must validate against the job-type schema before success.
+- `(tenantId, jobType, subjectId, inputHash)` có tính idempotent về mặt logic.
+- Trạng thái kết thúc gồm `SUCCEEDED`, `FAILED`, `CANCELLED` hoặc `REJECTED`.
+- Output phải hợp lệ theo schema của job type trước khi job thành công.
 
-## 2. Ticket state machine
+## 2. State machine của ticket
 
 ```mermaid
 stateDiagram-v2
@@ -50,9 +53,9 @@ stateDiagram-v2
   CLOSED --> IN_PROGRESS: admin reopen
 ```
 
-Invalid transitions return `409 TICKET_INVALID_TRANSITION`.
+Transition không hợp lệ trả `409 TICKET_INVALID_TRANSITION`.
 
-## 3. AI job state machine
+## 3. State machine của AI job
 
 ```mermaid
 stateDiagram-v2
@@ -65,49 +68,48 @@ stateDiagram-v2
   QUEUED --> CANCELLED
 ```
 
-## 4. Create ticket and async analysis
+## 4. Tạo ticket và phân tích bất đồng bộ
 
-1. Client sends `POST /v1/tickets` with `Idempotency-Key`.
-2. Ticket Service validates tenant/user, creates ticket and `TicketCreated` outbox event in one transaction.
-3. API returns `201` without waiting for AI.
-4. Outbox publisher sends `ticket.created.v1`.
-5. AI Worker claims event and calls AI Orchestrator create/execute job.
-6. Orchestrator calls model with structured schema.
-7. Orchestrator publishes `ai.analysis.completed.v1` or `ai.analysis.failed.v1`.
-8. Ticket Service idempotently projects the result.
-9. UI receives updated state on polling; WebSocket/SSE is a later enhancement.
+1. Client gửi `POST /v1/tickets` kèm `Idempotency-Key`.
+2. Ticket Service xác minh tenant/user, tạo ticket và event `TicketCreated` trong cùng transaction.
+3. API trả `201` mà không chờ AI.
+4. Outbox publisher phát `ticket.created.v1`.
+5. AI Worker nhận event và yêu cầu AI Orchestrator tạo/thực thi job.
+6. Orchestrator gọi model với structured schema.
+7. Orchestrator phát `ai.analysis.completed.v1` hoặc `ai.analysis.failed.v1`.
+8. Ticket Service chiếu kết quả theo cách idempotent.
+9. UI nhận trạng thái mới bằng polling; WebSocket/SSE là cải tiến sau này.
 
-## 5. Draft grounded reply
+## 5. Soạn câu trả lời có căn cứ
 
-1. Agent sends `POST /v1/tickets/{id}/ai-drafts`.
-2. Ticket Service verifies role and ticket access, creates command/outbox event and returns `202` with job ID.
-3. Worker requests Orchestrator to execute `DRAFT_REPLY`.
-4. Orchestrator calls Knowledge Search with tenant, agent identity, query and topK.
-5. Knowledge Service filters by tenant/ACL before vector search.
-6. Orchestrator provides retrieved chunks to model and requires citation IDs in structured output.
-7. Citation IDs are validated against retrieved chunks. Unknown citations reject the output.
-8. Completed event is projected into Ticket Service.
-9. Agent edits/approves draft. A separate normal comment command sends it; AI cannot send directly.
+1. Agent gửi `POST /v1/tickets/{id}/ai-drafts`.
+2. Ticket Service kiểm tra role và quyền truy cập, tạo command/outbox event rồi trả `202` kèm job ID.
+3. Worker yêu cầu Orchestrator thực thi `DRAFT_REPLY`.
+4. Orchestrator gọi Knowledge Search với tenant, danh tính agent, query và topK.
+5. Knowledge Service lọc tenant/ACL trước vector search.
+6. Orchestrator đưa các chunk tìm được vào model và yêu cầu citation ID trong structured output.
+7. Citation ID được đối chiếu với chunk đã lấy; citation lạ khiến output bị từ chối.
+8. Completed event được chiếu vào Ticket Service.
+9. Agent sửa/duyệt draft rồi gửi bằng lệnh comment bình thường; AI không được tự gửi.
 
-## 6. Upload and ingest document
+## 6. Upload và ingest tài liệu
 
-1. Admin requests upload URL.
-2. Knowledge Service creates `UPLOADING` document and signed URL.
-3. Client uploads directly to object storage.
-4. Client completes upload with checksum and size.
-5. Service verifies object metadata, sets `QUEUED` and publishes ingest event.
-6. Worker extracts text, normalizes, splits chunks, creates embeddings and stores a new document version.
-7. One transaction activates the new version and deactivates the old version.
-8. `knowledge.document.activated.v1` is published.
+1. Admin yêu cầu upload URL.
+2. Knowledge Service tạo document `UPLOADING` và signed URL.
+3. Client upload trực tiếp lên object storage.
+4. Client hoàn tất upload với checksum và kích thước.
+5. Service xác minh object metadata, chuyển `QUEUED` và phát ingest event.
+6. Worker trích xuất, chuẩn hóa, chia chunk, tạo embedding và lưu document version mới.
+7. Một transaction kích hoạt version mới và vô hiệu version cũ.
+8. `knowledge.document.activated.v1` được phát.
 
-## 7. Failure behavior
+## 7. Hành vi khi lỗi
 
-| Failure | User-visible behavior | Recovery |
+| Lỗi | Biểu hiện với người dùng | Khôi phục |
 |---|---|---|
-| Model timeout | Ticket remains usable; AI status shows delayed | retry, then DLQ/manual retry |
-| Knowledge timeout | Draft job retries; no ungrounded fallback | one REST retry, job retry |
-| Invalid model JSON | output rejected and retried once with repair instruction | terminal failure after retry |
-| Duplicate event | no duplicate change | processed-event unique key |
-| Object upload incomplete | document remains `UPLOADING` then expires | cleanup after 24 hours |
-| Embedding partial failure | version never activated | delete staging chunks and retry |
-
+| Model timeout | Ticket vẫn dùng được; trạng thái AI báo chậm | retry, sau đó DLQ/manual retry |
+| Knowledge timeout | Draft job retry; không fallback sang nội dung thiếu căn cứ | một lần REST retry, rồi job retry |
+| JSON từ model không hợp lệ | Output bị từ chối và retry một lần với repair instruction | thất bại cuối sau retry |
+| Event trùng | Không tạo thay đổi trùng | unique key của processed-event |
+| Upload chưa hoàn tất | Document giữ `UPLOADING` rồi hết hạn | dọn sau 24 giờ |
+| Một phần embedding thất bại | Version không được kích hoạt | xóa staging chunk và retry |

@@ -1,111 +1,102 @@
-# Test and Evaluation Strategy
+# Chiến lược kiểm thử và đánh giá
 
 ## 1. Test pyramid
 
-- Unit tests: domain policies, state machines, prompt/output validators, chunking.
-- Slice tests: controllers/security/repositories.
-- Integration tests: real PostgreSQL/RabbitMQ/Redis/MinIO using Testcontainers.
-- Contract tests: OpenAPI and event schemas.
-- End-to-end: full platform with fake AI and fake embeddings.
-- AI evaluation: fixed datasets against real provider, scheduled/manual due cost.
+- Unit test: domain policy, state machine, validator output/prompt và chunking.
+- Slice test: controller/security/repository.
+- Integration test: PostgreSQL/RabbitMQ/Redis/MinIO thật qua Testcontainers.
+- Contract test: OpenAPI và event schema.
+- End-to-end: toàn nền tảng với fake AI và fake embedding.
+- AI evaluation: dataset cố định với provider thật, chạy định kỳ/thủ công vì có chi phí.
 
-## 2. Per-service minimum suites
+## 2. Bộ test tối thiểu theo service
 
 ### Identity
 
-- Token claims, expiry and rotation.
-- Password verification and rate limiting.
+- Claim, expiry và rotation của token.
+- Xác minh password và rate limit.
 - Refresh concurrency/reuse detection.
-- Admin tenant isolation.
+- Cô lập tenant cho Admin.
 
 ### Ticket
 
-- Every role x action x ownership combination.
-- State-machine transitions.
-- optimistic locking and idempotency.
-- outbox atomicity and duplicate consumer event.
+- Mọi tổ hợp role × action × ownership.
+- State-machine transition.
+- Optimistic locking và idempotency.
+- Outbox atomicity và duplicate consumer event.
 
 ### AI Orchestrator
 
-- Job idempotency and input hash conflict.
-- Strict schema validation and single repair.
-- citation subset validation.
-- provider error classification, retry and circuit breaker.
-- prompt/model version audit.
+- Job idempotency và xung đột input hash.
+- Strict schema validation và một lần repair.
+- Citation subset validation.
+- Phân loại lỗi provider, retry và circuit breaker.
+- Audit version của prompt/model.
 
 ### Knowledge
 
-- extraction/chunking fixtures.
-- version activation atomicity.
-- ACL filtering before ranking.
-- vector/hybrid ranking fixtures.
-- deletion removes search visibility immediately.
+- Fixture extraction/chunking.
+- Tính nguyên tử khi activate version.
+- Lọc ACL trước ranking.
+- Fixture vector/hybrid ranking.
+- Xóa phải làm mất khả năng search ngay.
 
 ### Worker
 
-- retry routing, DLQ and preserved IDs.
-- concurrency pool isolation.
-- reconciliation without new logical job.
+- Retry routing, DLQ và giữ nguyên ID.
+- Cô lập concurrency pool.
+- Reconciliation không tạo logical job mới.
 
-## 3. Contract tests
+## 3. Contract test
 
-- Lint `openapi.yaml` and generate a client during CI to prove usability.
-- Compare external API against main branch; breaking changes fail unless versioned.
-- Validate event samples against JSON schemas.
-- Consumer tests use producer fixtures for current and previous supported versions.
+- Lint `openapi.yaml` và generate client trong CI để chứng minh contract sử dụng được.
+- So API ngoài với main branch; breaking change phải fail nếu chưa version.
+- Validate event sample theo JSON Schema.
+- Consumer test dùng producer fixture cho version hiện tại và version trước còn hỗ trợ.
 
-## 4. AI evaluation datasets
+## 4. Dataset đánh giá AI
 
-### Ticket classification dataset
+### Dataset phân loại ticket
 
-CSV/JSONL fields: `caseId`, subject, description, expected category, expected priority range, sensitive-data flag. Minimum 100 hand-reviewed cases split 70 development/30 locked test.
+Field CSV/JSONL: `caseId`, subject, description, expected category, expected priority range,
+sensitive-data flag. Tối thiểu 100 case được review thủ công, chia 70 development/30 locked test.
 
-Metrics:
+Metric: Macro F1 cho category; exact/adjacent accuracy cho priority; structured-output validity;
+sensitive-data redaction recall; p50/p95 latency và chi phí trung bình.
 
-- Macro F1 for category.
-- Exact/adjacent accuracy for priority.
-- Structured-output validity.
-- Sensitive-data redaction recall.
-- p50/p95 latency and mean cost.
+### Dataset RAG
 
-### RAG dataset
+Field: query, allowed document ID, supporting chunk/document mong đợi, unanswerable flag và
+principal/role.
 
-Fields: query, allowed document IDs, expected supporting chunk/document, unanswerable flag, principal/role.
+Metric: Recall@5, MRR, citation validity (cấu trúc phải 100%), groundedness theo rubric và human
+review lấy mẫu, tỷ lệ refusal/no-knowledge đúng, số lần ACL leakage phải bằng 0.
 
-Metrics:
+## 5. Release gate
 
-- Recall@5 and MRR for retrieval.
-- citation validity (must be 100% structurally).
-- answer groundedness scored by rubric and sampled human review.
-- correct refusal/no-knowledge rate.
-- ACL leakage count (must be zero).
+- Không có finding bảo mật critical/high.
+- Migration chạy được từ DB sạch và snapshot release trước.
+- Contract compatibility pass.
+- Cross-tenant test matrix pass 100%.
+- Citation structural validity 100% và không ACL leakage.
+- Category Macro F1 mục tiêu >= 0,80.
+- Retrieval Recall@5 mục tiêu >= 0,85 trên controlled corpus.
+- Core ticket API p95 đạt NFR dưới baseline load.
 
-## 5. Release gates
+Các mục tiêu là giả thuyết ban đầu. Phải ghi dataset và phương pháp đo thực tế trong README, không
+được tuyên bố số liệu chưa đo.
 
-- No critical/high security finding.
-- All migrations apply from clean DB and previous release snapshot.
-- Contract compatibility passes.
-- Cross-tenant test matrix passes 100%.
-- Citation structural validity 100%.
-- No ACL leakage in evaluation.
-- Category Macro F1 target >= 0.80 for portfolio baseline.
-- Retrieval Recall@5 target >= 0.85 on controlled corpus.
-- Core ticket API p95 within NFR target under baseline load.
+## 6. Kịch bản hiệu năng
 
-Targets are initial hypotheses. Record actual dataset and method in README; never claim unmeasured numbers.
+1. 100 user đồng thời xem danh sách ticket, 20 write/s trong 15 phút.
+2. 20 AI job/s với fake provider có phân phối latency.
+3. Backlog 10.000 event và khôi phục không mất/trùng logical change.
+4. Search trên một triệu synthetic chunk.
+5. 100 refresh request đồng thời cho cùng token; đúng một request thành công.
 
-## 6. Performance scenarios
+## 7. Quy tắc dữ liệu test
 
-1. 100 concurrent ticket list users, 20 writes/s for 15 minutes.
-2. 20 AI jobs/s with fake provider latency distribution.
-3. Queue backlog of 10,000 events and recovery without loss/duplication.
-4. Search over one million synthetic chunks.
-5. 100 simultaneous refresh requests for the same token; exactly one succeeds.
-
-## 7. Test data rules
-
-- Use synthetic data only; never company/customer documents.
-- Seed deterministic tenants/users and stable UUIDs for integration tests.
-- Separate locked evaluation test cases from prompt iteration data.
-- Version datasets alongside prompt/config changes.
-
+- Chỉ dùng dữ liệu tổng hợp; không dùng document thật của công ty/khách hàng.
+- Seed tenant/user xác định và UUID ổn định cho integration test.
+- Tách locked evaluation case khỏi dữ liệu dùng lặp prompt.
+- Version dataset cùng thay đổi prompt/config.

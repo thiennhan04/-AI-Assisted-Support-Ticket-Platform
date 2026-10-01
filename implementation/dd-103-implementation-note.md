@@ -1,29 +1,22 @@
-# DD-103 Implementation Note
+# Ghi chú triển khai DD-103
 
-## Delivered scope
+## Phạm vi đã bàn giao
 
-- Configured Ticket, Knowledge, and AI Orchestrator as stateless OAuth2 Resource Servers.
-- Added typed issuer, audience, and JWKS URI configuration with startup validation.
-- Restricted accepted signatures to RS256 and added issuer, audience, timestamp, UUID identity,
-  tenant, and role validation.
-- Mapped verified claims into immutable, tenant-aware application principals and `ROLE_*`
-  authorities.
-- Enabled method security, kept health/info public, protected all other user routes, and denied user
-  tokens on `/internal/**`.
-- Added the missing Resource Server dependency to AI Orchestrator.
+- Cấu hình Ticket, Knowledge và AI Orchestrator thành OAuth2 Resource Server stateless.
+- Thêm cấu hình typed cho issuer, audience, JWKS URI và kiểm tra khi khởi động.
+- Chỉ cho phép signature RS256; thêm validation issuer, audience, timestamp, UUID identity, tenant và role.
+- Ánh xạ claim đã xác minh vào application principal bất biến, có tenant và authority `ROLE_*`.
+- Bật method security, giữ health/info public, bảo vệ mọi user route khác và từ chối user token tại `/internal/**`.
+- Thêm Resource Server dependency còn thiếu vào AI Orchestrator.
 
-## Verification
+## Kiểm tra
 
-- A real Nimbus decoder test serves a two-key JWKS and verifies tokens signed by both current and
-  previous private keys.
-- Tests reject an unknown signing key, wrong issuer, wrong audience, invalid/missing tenant,
-  missing subject, empty roles, and unknown roles.
-- Contract tests verify principal and Spring authority mapping in all three services.
-
-- Full monorepo `./mvnw.cmd -B clean verify` passed all seven modules, including formatting,
-  Enforcer boundaries, unit tests, Identity integration tests, and executable JAR packaging.
-- DD-103 test totals: Ticket 5, Knowledge 3, and AI Orchestrator 3; all passed.
-- Spring Boot Buildpacks produced the updated images:
+- Test với Nimbus decoder thật phục vụ JWKS hai key và xác minh token được ký bởi cả private key hiện tại lẫn trước đó.
+- Test từ chối signing key không biết, sai issuer/audience, tenant sai/thiếu, thiếu subject, role rỗng hoặc role không biết.
+- Contract test kiểm tra ánh xạ principal và Spring authority trong cả ba service.
+- Toàn monorepo `./mvnw.cmd -B clean verify` thành công ở cả bảy module, gồm format, Enforcer boundary, unit test, Identity integration test và đóng gói executable JAR.
+- Tổng test DD-103: Ticket 5, Knowledge 3, AI Orchestrator 3; tất cả thành công.
+- Spring Boot Buildpack tạo các image đã cập nhật:
   - `ticket-platform/ticket-service:0.1.0-SNAPSHOT` (`8527a29ae243`).
   - `ticket-platform/ai-orchestrator-service:0.1.0-SNAPSHOT` (`a504f8c77d5b`).
   - `ticket-platform/knowledge-service:0.1.0-SNAPSHOT` (`70539659bb83`).

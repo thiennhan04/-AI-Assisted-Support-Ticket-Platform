@@ -1,78 +1,78 @@
-# Non-Functional Requirements
+# Yêu cầu phi chức năng
 
-## 1. Availability and degradation
+## 1. Tính sẵn sàng và suy giảm có kiểm soát
 
-- Core ticket read/write APIs: target 99.9% monthly availability.
-- Identity token endpoints: target 99.9% monthly availability.
-- AI features: target 99.0%; failure must not reduce core API availability.
-- Readiness becomes unhealthy only when the service cannot perform core responsibility. Model-provider failure does not mark Ticket Service unhealthy.
+- Core ticket read/write API: mục tiêu 99,9% mỗi tháng.
+- Identity token endpoint: mục tiêu 99,9% mỗi tháng.
+- Tính năng AI: mục tiêu 99,0%; lỗi AI không được làm giảm tính sẵn sàng của core API.
+- Readiness chỉ unhealthy khi service không thực hiện được trách nhiệm chính. Lỗi model provider không
+  làm Ticket Service unhealthy.
 
-## 2. Performance targets
+## 2. Mục tiêu hiệu năng
 
-| Operation | Target p95 | Notes |
+| Thao tác | p95 mục tiêu | Ghi chú |
 |---|---:|---|
-| Login | 500 ms | excludes external identity providers |
-| Create/update ticket | 600 ms | AI excluded |
-| Ticket list | 800 ms | page size <= 50 |
+| Login | 500 ms | không tính external identity provider |
+| Tạo/cập nhật ticket | 600 ms | không tính AI |
+| Danh sách ticket | 800 ms | page size <= 50 |
 | Knowledge vector search | 800 ms | topK <= 20 |
-| AI analysis | 15 s | asynchronous |
-| Grounded draft | 25 s | asynchronous |
+| AI analysis | 15 s | bất đồng bộ |
+| Grounded draft | 25 s | bất đồng bộ |
 
-## 3. Scale baseline
+## 3. Quy mô cơ sở
 
-- 100 tenants.
-- 10,000 active users.
-- 1,000,000 tickets total.
-- 100 ticket writes/second burst.
-- 20 AI jobs/second sustained.
-- 1,000,000 knowledge chunks.
-- Maximum ticket body: 20,000 Unicode characters.
-- Maximum document: 25 MB and 500 pages.
+- 100 tenant.
+- 10.000 active user.
+- Tổng cộng 1.000.000 ticket.
+- Burst 100 lần ghi ticket/giây.
+- Duy trì 20 AI job/giây.
+- 1.000.000 knowledge chunk.
+- Nội dung ticket tối đa 20.000 ký tự Unicode.
+- Tài liệu tối đa 25 MB và 500 trang.
 
-## 4. Security
+## 4. Bảo mật
 
-- TLS 1.2+ for all network paths.
-- Secrets from secret manager/environment injection only.
-- Password hashing with Argon2id or BCrypt cost 12 minimum.
-- Tenant scope enforced server-side on every query.
-- Object keys are opaque and never derived directly from user filenames.
-- AI input is classified and redacted according to policy before provider call.
-- Audit records are append-only at application level.
+- TLS 1.2+ cho mọi đường truyền mạng.
+- Secret chỉ lấy từ secret manager hoặc environment injection.
+- Mật khẩu dùng Argon2id hoặc BCrypt với cost tối thiểu 12.
+- Mọi query phải áp dụng tenant scope ở server.
+- Object key phải opaque, không sinh trực tiếp từ tên file người dùng.
+- AI input phải được phân loại và che dữ liệu theo policy trước khi gọi provider.
+- Audit record chỉ được append ở tầng ứng dụng.
 
-## 5. Data retention
+## 5. Thời gian lưu dữ liệu
 
-| Data | Default retention |
+| Dữ liệu | Mặc định |
 |---|---|
-| Ticket/audit data | 3 years or tenant policy |
-| Refresh tokens | expiry + 30 days metadata |
-| AI raw input/output | 30 days |
-| AI usage/quality metrics | 13 months |
-| Deleted document objects | purge within 7 days |
-| Application logs | 30 days |
+| Ticket/audit | 3 năm hoặc theo policy của tenant |
+| Refresh token | thời hạn token + 30 ngày metadata |
+| AI raw input/output | 30 ngày |
+| AI usage/quality metric | 13 tháng |
+| Object của tài liệu đã xóa | xóa trong 7 ngày |
+| Application log | 30 ngày |
 
-## 6. Observability
+## 6. Khả năng quan sát
 
-Every request and event must carry:
+Mỗi request và event phải mang:
 
-- `trace_id` and `span_id`.
-- `correlation_id` exposed to client.
-- `tenant_id` as controlled metadata, never raw PII.
-- Service/version/environment attributes.
+- `trace_id` và `span_id`.
+- `correlation_id` được trả cho client.
+- `tenant_id` dưới dạng metadata được kiểm soát, không chứa raw PII.
+- Thuộc tính service/version/environment.
 
-Mandatory metrics:
+Metric bắt buộc:
 
-- HTTP request count, duration and error rate.
-- DB pool utilization and query duration.
-- queue depth, consumer lag, redelivery and DLQ count.
-- AI jobs by type/status.
-- model latency, tokens, estimated cost and schema-validation failure.
-- retrieval latency, result count and no-result rate.
+- Số request HTTP, thời gian và tỷ lệ lỗi.
+- Mức sử dụng DB pool và thời gian query.
+- Queue depth, consumer lag, redelivery và số lượng DLQ.
+- AI job theo type/status.
+- Model latency, token, chi phí ước tính và lỗi schema validation.
+- Retrieval latency, số kết quả và tỷ lệ không có kết quả.
 
-## 7. Maintainability
+## 7. Khả năng bảo trì
 
-- Java 21 and one supported Spring Boot minor line.
-- Public APIs and events use explicit versioning.
-- Database changes use forward-only Flyway migrations.
-- Each service has >= 70% line coverage as a guardrail; critical domain classes require behavior-focused tests.
-- Architecture tests enforce package dependency rules.
-
+- Java 21 và một dòng Spring Boot minor được hỗ trợ.
+- Public API và event phải version rõ ràng.
+- Thay đổi database dùng forward-only Flyway migration.
+- Mỗi service có line coverage >= 70% làm guardrail; domain quan trọng cần behavior-focused test.
+- Architecture test kiểm soát dependency giữa các package.

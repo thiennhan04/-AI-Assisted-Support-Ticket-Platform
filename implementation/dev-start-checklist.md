@@ -1,52 +1,51 @@
-# Developer Start Checklist
+# Checklist trước khi developer bắt đầu
 
-Use this list before coding a story.
+Dùng danh sách này trước khi code một story.
 
-## Platform setup
+## Thiết lập platform
 
-- [ ] Java 21 and container runtime installed.
-- [ ] Local infrastructure healthy.
-- [ ] Service database/user created and Flyway baseline applied.
-- [ ] Fake AI/embedding provider selected.
-- [ ] OpenAPI imported and event samples available.
+- [ ] Đã cài Java 21 và container runtime.
+- [ ] Hạ tầng local healthy.
+- [ ] Đã tạo database/user của service và áp dụng Flyway baseline.
+- [ ] Đã chọn fake AI/embedding provider.
+- [ ] Đã import OpenAPI và có event sample.
 
-## For every endpoint
+## Với mỗi endpoint
 
-- [ ] Role and tenant policy defined.
-- [ ] Request limits/validation defined.
-- [ ] Idempotency and optimistic concurrency decision made.
-- [ ] Transaction boundary identified.
-- [ ] Audit/outbox requirement identified.
-- [ ] Problem code documented.
-- [ ] Unit, security and integration cases written.
+- [ ] Đã xác định role và tenant policy.
+- [ ] Đã xác định request limit/validation.
+- [ ] Đã quyết định idempotency và optimistic concurrency.
+- [ ] Đã xác định transaction boundary.
+- [ ] Đã xác định yêu cầu audit/outbox.
+- [ ] Đã ghi problem code.
+- [ ] Đã viết unit, security và integration case.
 
-## For every event
+## Với mỗi event
 
-- [ ] Producer transaction/outbox identified.
-- [ ] Routing key and payload version registered.
-- [ ] PII minimized.
-- [ ] Consumer idempotency key/transaction defined.
-- [ ] Retryable/permanent errors classified.
-- [ ] DLQ and replay behavior documented.
-- [ ] Current and duplicate-delivery tests exist.
+- [ ] Đã xác định producer transaction/outbox.
+- [ ] Đã đăng ký routing key và payload version.
+- [ ] Đã giảm thiểu PII.
+- [ ] Đã xác định consumer idempotency key/transaction.
+- [ ] Đã phân loại lỗi retryable/permanent.
+- [ ] Đã ghi hành vi DLQ và replay.
+- [ ] Có test delivery thông thường và delivery trùng.
 
-## For every AI feature
+## Với mỗi tính năng AI
 
-- [ ] Business fallback works without AI.
-- [ ] Input/output schema and limits defined.
-- [ ] Prompt version is immutable/audited.
-- [ ] Data classification/redaction checked.
-- [ ] Grounded claims/citations validated where needed.
-- [ ] Human approval point explicit.
-- [ ] Token, cost, latency and quality measured.
-- [ ] Evaluation case added before prompt change is accepted.
+- [ ] Business fallback hoạt động khi không có AI.
+- [ ] Đã xác định input/output schema và giới hạn.
+- [ ] Prompt version bất biến/có audit.
+- [ ] Đã kiểm tra data classification/redaction.
+- [ ] Grounded claim/citation được kiểm tra khi cần.
+- [ ] Có điểm human approval rõ ràng.
+- [ ] Đo token, chi phí, độ trễ và chất lượng.
+- [ ] Thêm evaluation case trước khi chấp nhận thay đổi prompt.
 
-## Pull request completion
+## Hoàn tất pull request
 
-- [ ] Build, unit, integration, architecture and contract tests pass.
-- [ ] Migration tested from clean and previous schema.
-- [ ] Metrics/logs contain no raw user content or secrets.
-- [ ] API/event docs updated.
-- [ ] Rollback/degradation behavior stated.
-- [ ] Acceptance criteria demonstrated with test or screenshot/log evidence.
-
+- [ ] Build, unit, integration, architecture và contract test thành công.
+- [ ] Migration được test từ schema sạch và schema trước đó.
+- [ ] Metric/log không chứa raw user content hoặc secret.
+- [ ] Đã cập nhật tài liệu API/event.
+- [ ] Đã nêu hành vi rollback/degradation.
+- [ ] Chứng minh acceptance criteria bằng test hoặc ảnh/log.

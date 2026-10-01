@@ -1,74 +1,73 @@
-# Observability and Operations Runbook
+# Runbook quan sát và vận hành
 
-## 1. Service-level indicators
+## 1. Chỉ số cấp service
 
 ### Core API
 
-- Availability: successful eligible requests / total eligible requests.
-- Latency: p50/p95/p99 by route template, not raw URI.
-- Correctness: 5xx rate and domain-conflict rate separately.
+- Availability: request hợp lệ thành công / tổng request hợp lệ.
+- Latency: p50/p95/p99 theo route template, không theo raw URI.
+- Correctness: tách riêng tỷ lệ 5xx và domain conflict.
 
 ### AI pipeline
 
-- Job success rate by job type/model/prompt version.
-- End-to-end queue-to-terminal latency.
-- Schema-validation/repair rate.
-- Citation rejection/no-knowledge rate.
-- Token/cost per successful job.
+- Tỷ lệ job thành công theo job type/model/prompt version.
+- Độ trễ end-to-end từ queue đến terminal state.
+- Tỷ lệ schema validation/repair.
+- Tỷ lệ citation bị từ chối/không có tri thức.
+- Token/chi phí trên mỗi job thành công.
 
 ### Knowledge
 
-- Ingestion success/duration/pages/chunks.
-- Search p95 and no-result rate.
-- Offline Recall@5 evaluation by corpus version.
+- Thành công/thời gian/số trang/số chunk của ingestion.
+- Search p95 và tỷ lệ không có kết quả.
+- Đánh giá Recall@5 offline theo corpus version.
 
-## 2. Suggested alerts
+## 2. Alert đề xuất
 
-| Alert | Condition | Severity |
+| Alert | Điều kiện | Mức độ |
 |---|---|---|
-| Core API error | 5xx > 2% for 5 min | high |
-| Core latency | p95 > target for 10 min | medium |
-| DLQ non-empty | count > 0 for 5 min | high |
-| AI provider circuit open | > 2 min | medium |
-| AI queue lag | oldest > 5 min | medium |
-| DB pool saturation | active/max > 90% for 5 min | high |
-| Knowledge ingest failures | > 5 in 15 min | medium |
-| Tenant budget near limit | > 80% | informational |
+| Core API error | 5xx > 2% trong 5 phút | cao |
+| Core latency | p95 > mục tiêu trong 10 phút | trung bình |
+| DLQ không rỗng | count > 0 trong 5 phút | cao |
+| AI provider circuit open | > 2 phút | trung bình |
+| AI queue lag | message cũ nhất > 5 phút | trung bình |
+| DB pool saturation | active/max > 90% trong 5 phút | cao |
+| Knowledge ingest failure | > 5 trong 15 phút | trung bình |
+| Tenant gần hết ngân sách | > 80% | thông tin |
 
-## 3. Dashboards
+## 3. Dashboard
 
-Create three Grafana dashboards:
+Tạo ba Grafana dashboard:
 
-1. Platform overview: request rate/errors/latency, instance health, DB/broker.
-2. AI quality/cost: jobs, failures, token/cost, prompt versions, repair and feedback.
+1. Tổng quan platform: request rate/error/latency, instance health, DB/broker.
+2. Chất lượng/chi phí AI: job, failure, token/cost, prompt version, repair và feedback.
 3. Knowledge: ingestion queue/status, chunk count, retrieval latency/no-results.
 
-## 4. Runbook: AI jobs delayed
+## 4. Runbook: AI job bị chậm
 
-1. Check Worker instances and queue oldest-message age.
-2. Check provider circuit and 429/5xx rate.
-3. Verify tenant budget and concurrency settings.
-4. Scale Worker only if provider and DB have capacity.
-5. If messages are in DLQ, inspect safe error code/correlation ID.
-6. Fix root cause and replay preserving event/job IDs.
-7. Verify duplicate protection and job terminal state.
+1. Kiểm tra Worker instance và tuổi của message cũ nhất trong queue.
+2. Kiểm tra provider circuit và tỷ lệ 429/5xx.
+3. Xác minh tenant budget và cấu hình concurrency.
+4. Chỉ scale Worker nếu provider và DB còn capacity.
+5. Nếu message nằm trong DLQ, kiểm tra error code/correlation ID an toàn.
+6. Sửa nguyên nhân gốc rồi replay, giữ nguyên event/job ID.
+7. Xác minh duplicate protection và terminal state của job.
 
-## 5. Runbook: incorrect/leaking answer
+## 5. Runbook: câu trả lời sai/rò rỉ
 
-1. Disable `FEATURE_AI_DRAFT` if active risk exists.
-2. Capture job ID, prompt version, model, citation IDs and access decision logs.
-3. Confirm Knowledge ACL filter for affected principal/tenant.
-4. Reproduce in secured staging with sanitized fixture.
-5. If prompt issue, create a new immutable prompt version and evaluation case.
-6. If retrieval issue, fix index/ACL and re-run evaluation.
-7. Do not edit historical job/output records.
+1. Tắt `FEATURE_AI_DRAFT` nếu đang có rủi ro.
+2. Thu thập job ID, prompt version, model, citation ID và access-decision log.
+3. Xác nhận bộ lọc Knowledge ACL cho principal/tenant bị ảnh hưởng.
+4. Tái hiện trong staging bảo mật bằng fixture đã làm sạch.
+5. Nếu lỗi prompt, tạo immutable prompt version mới và evaluation case.
+6. Nếu lỗi retrieval, sửa index/ACL và chạy lại evaluation.
+7. Không sửa job/output lịch sử.
 
-## 6. Runbook: stuck document ingestion
+## 6. Runbook: document ingestion bị kẹt
 
-1. Inspect document version status and lease expiry.
-2. Confirm object exists and checksum/size match.
-3. Check extractor and embedding batch errors.
-4. Clean staging chunks for failed version only.
-5. Retry same version/job ID when safe.
-6. Previous active version must remain searchable throughout.
-
+1. Kiểm tra status của document version và lease expiry.
+2. Xác nhận object tồn tại, checksum/kích thước khớp.
+3. Kiểm tra lỗi extractor và embedding batch.
+4. Chỉ dọn staging chunk của phiên bản thất bại.
+5. Retry cùng version/job ID khi an toàn.
+6. Phiên bản active trước phải luôn tìm kiếm được trong suốt quá trình.

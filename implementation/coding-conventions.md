@@ -1,23 +1,24 @@
-# Coding Conventions and Implementation Skeleton
+# Quy ước code và khung triển khai
 
-## 1. Layering
+## 1. Phân tầng
 
-- Controllers map transport DTOs to application commands and do not contain business logic.
-- Application services define transaction boundaries and orchestrate domain/ports.
-- Domain objects enforce invariants and contain no Spring/JPA dependency where practical.
-- Infrastructure implements persistence, broker, storage and model-provider ports.
-- JPA entities may be separate from domain models for strict boundaries; for portfolio scope, a well-controlled aggregate entity is acceptable.
+- Controller ánh xạ transport DTO sang application command và không chứa business logic.
+- Application service xác định transaction boundary và điều phối domain/port.
+- Domain object bảo vệ invariant và không phụ thuộc Spring/JPA khi hợp lý.
+- Infrastructure triển khai port cho persistence, broker, storage và model provider.
+- Có thể tách JPA entity khỏi domain model để giữ ranh giới nghiêm ngặt; trong phạm vi portfolio, một aggregate entity được kiểm soát tốt vẫn chấp nhận được.
 
-## 2. Naming
+## 2. Cách đặt tên
 
-- Commands: verbs, e.g. `CreateTicketCommand`.
-- Results/queries: `TicketDetail`, `TicketPageQuery`.
-- Ports: capability names, e.g. `LanguageModelPort`, `KnowledgeSearchPort`.
-- Adapters: technology names, e.g. `SpringAiLanguageModelAdapter`.
-- Events: past tense and versioned, e.g. `TicketCreatedV1`.
-- Error codes: stable uppercase snake case.
+- Command: dùng động từ, ví dụ `CreateTicketCommand`.
+- Result/query: `TicketDetail`, `TicketPageQuery`.
+- Port: tên capability, ví dụ `LanguageModelPort`, `KnowledgeSearchPort`.
+- Adapter: `<Technology><Capability>Adapter`, ví dụ `JpaTicketRepositoryAdapter`, `JpaTicketHistoryRepositoryAdapter`, `SpringAiLanguageModelAdapter`.
+- Framework repository giữ framework trong tên, ví dụ `TicketSpringDataRepository`; chỉ infrastructure adapter được inject chúng.
+- Event: thì quá khứ và có version, ví dụ `TicketCreatedV1`.
+- Error code: uppercase snake case ổn định.
 
-## 3. Transaction template
+## 3. Mẫu transaction
 
 ```java
 @Transactional
@@ -30,9 +31,9 @@ public TicketId handle(CreateTicketCommand command, Principal principal) {
 }
 ```
 
-Do not publish to RabbitMQ directly inside this transaction.
+Không publish trực tiếp tới RabbitMQ bên trong transaction này.
 
-## 4. Tenant-safe repository
+## 4. Repository an toàn theo tenant
 
 ```java
 public interface TicketRepository {
@@ -42,22 +43,22 @@ public interface TicketRepository {
 }
 ```
 
-Code review should reject unscoped tenant entity lookups.
+Code review phải từ chối thao tác tìm tenant entity không giới hạn theo tenant.
 
 ## 5. Problem response
 
-Map domain exceptions to `application/problem+json` with `type`, `title`, HTTP `status`, stable `code`, safe `detail`, `instance`, `correlationId` and optional field violations. Do not expose stack trace, SQL or provider response.
+Ánh xạ domain exception thành `application/problem+json` gồm `type`, `title`, HTTP `status`, `code` ổn định, `detail` an toàn, `instance`, `correlationId` và tùy chọn field violation. Không lộ stack trace, SQL hoặc provider response.
 
-## 6. REST client rules
+## 6. Quy tắc REST client
 
-- Configure connect/read timeout explicitly.
-- Propagate W3C trace context and correlation ID.
-- Authenticate with service identity.
-- Retry only documented idempotent/retryable operations.
-- Convert remote failures into typed exceptions at adapter boundary.
-- Use circuit breaker for model/knowledge dependencies.
+- Cấu hình rõ connect/read timeout.
+- Truyền W3C trace context và correlation ID.
+- Xác thực bằng service identity.
+- Chỉ retry operation đã được xác định là idempotent/retryable.
+- Chuyển remote failure thành typed exception tại adapter boundary.
+- Dùng circuit breaker cho dependency model/knowledge.
 
-## 7. Event handler template
+## 7. Mẫu event handler
 
 ```java
 @Transactional
@@ -70,22 +71,21 @@ public void handle(AiAnalysisCompletedV1 event) {
 }
 ```
 
-## 8. DTO and validation
+## 8. DTO và validation
 
-- Java records for immutable API/event DTOs.
-- Bean Validation for transport shape; domain validates business rules again.
-- Jackson configured for ISO dates, enum strings and safe limits.
-- Structured AI output uses dedicated DTO/schema, never `Map<String,Object>` in application code.
+- Dùng Java record cho API/event DTO bất biến.
+- Dùng Bean Validation cho transport shape; domain kiểm tra lại business rule.
+- Cấu hình Jackson cho ISO date, enum string và giới hạn an toàn.
+- Structured AI output dùng DTO/schema riêng, không dùng `Map<String,Object>` trong application code.
 
 ## 9. Logging
 
-Use parameterized structured logs. Include `event`, correlation ID, tenant ID, resource/job ID and stable error code. Avoid user content. One exception is logged once at the handling boundary.
+Dùng parameterized structured log. Gồm `event`, correlation ID, tenant ID, resource/job ID và error code ổn định. Tránh nội dung người dùng. Mỗi exception chỉ được log một lần tại handling boundary.
 
-## 10. Build quality
+## 10. Chất lượng build
 
-- Java formatter and import rules in CI.
-- SpotBugs/Error Prone or equivalent.
-- ArchUnit rules for layers and forbidden provider dependencies.
-- Dependency vulnerability and secret scanning.
-- No `latest` container tags or unpinned production dependencies.
-
+- Java formatter và import rule trong CI.
+- SpotBugs/Error Prone hoặc tương đương.
+- ArchUnit rule cho layer và dependency provider bị cấm.
+- Quét lỗ hổng dependency và secret.
+- Không dùng container tag `latest` hoặc production dependency chưa cố định phiên bản.

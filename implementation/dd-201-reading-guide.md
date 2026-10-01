@@ -1,21 +1,20 @@
-# DD-201 Review Guide
+# Hướng dẫn đọc và review DD-201
 
-This guide is the shortest path through Ticket CRUD/query. Read the production flow first and the
-integration test last.
+Đây là đường đọc ngắn nhất để hiểu Ticket CRUD/query. Đọc production flow trước và integration test sau cùng.
 
-## Review order
+## Thứ tự đọc
 
-1. `domain/TicketStatus` lists the lifecycle states.
-2. `domain/TicketTest` shows the aggregate rules in small examples.
-3. `domain/Ticket` owns state transitions and mutation invariants.
-4. `application/TicketPolicy` answers who may view, edit, manage, or transition a ticket.
-5. `application/TicketCommandService` orchestrates write use cases and transaction boundaries.
-6. `application/TicketQueryService` builds tenant-safe query criteria.
-7. `api/TicketController` maps HTTP input to application commands and queries.
-8. `infrastructure/persistence/JpaTicketRepositoryAdapter` implements the repository port.
-9. `TicketCrudIT` verifies that all layers work together against PostgreSQL.
+1. `domain/TicketStatus` liệt kê các trạng thái lifecycle.
+2. `domain/TicketTest` minh họa các quy tắc aggregate bằng ví dụ nhỏ.
+3. `domain/Ticket` sở hữu state transition và mutation invariant.
+4. `application/TicketPolicy` trả lời ai được xem, sửa, quản lý hoặc chuyển trạng thái ticket.
+5. `application/TicketCommandService` điều phối write use case và transaction boundary.
+6. `application/TicketQueryService` tạo query criteria an toàn theo tenant.
+7. `api/TicketController` ánh xạ HTTP input sang application command/query.
+8. `infrastructure/persistence/JpaTicketRepositoryAdapter` triển khai repository port.
+9. `TicketCrudIT` xác minh mọi tầng hoạt động cùng PostgreSQL.
 
-## Create flow
+## Luồng tạo
 
 ```text
 POST /v1/tickets
@@ -26,10 +25,9 @@ POST /v1/tickets
   -> PostgreSQL
 ```
 
-`tenantId` and `requesterId` come from `AuthenticatedPrincipal`, not the request body. A missing
-priority becomes `MEDIUM` in the application service.
+`tenantId` và `requesterId` đến từ `AuthenticatedPrincipal`, không phải request body. Nếu thiếu priority, application service dùng `MEDIUM`.
 
-## Update flow
+## Luồng cập nhật
 
 ```text
 PATCH /v1/tickets/{id}
@@ -42,31 +40,26 @@ PATCH /v1/tickets/{id}
   -> TicketRepository.save
 ```
 
-Each group has one owner:
+Mỗi nhóm trách nhiệm có một nơi sở hữu:
 
-| Concern | Owner |
+| Mối quan tâm | Nơi sở hữu |
 |---|---|
-| Request shape and size limits | API DTO |
-| Caller and role authorization | `TicketPolicy` |
-| Allowed state transitions | `Ticket` |
-| Transaction and operation order | `TicketCommandService` |
-| Tenant-scoped reads/writes | Repository port and adapter |
+| Cấu trúc request và giới hạn kích thước | API DTO |
+| Phân quyền caller và role | `TicketPolicy` |
+| State transition được phép | `Ticket` |
+| Transaction và thứ tự thao tác | `TicketCommandService` |
+| Đọc/ghi giới hạn theo tenant | Repository port và adapter |
 
-Assignment is applied before an explicit status change because assigning an OPEN ticket starts work
-and moves it to `IN_PROGRESS`.
+Assignment được áp dụng trước status change rõ ràng vì assign một ticket OPEN sẽ bắt đầu xử lý và chuyển nó sang `IN_PROGRESS`.
 
-## Query flow
+## Luồng query
 
-`TicketQueryService` always inserts the principal tenant into `TicketSearchCriteria`. For CUSTOMER,
-it also inserts the caller as `visibleRequesterId`; a client-provided requester filter can narrow
-the result but can never widen visibility.
+`TicketQueryService` luôn đưa tenant của principal vào `TicketSearchCriteria`. Với CUSTOMER, service còn đưa caller vào `visibleRequesterId`; requester filter do client truyền chỉ có thể thu hẹp kết quả, không thể mở rộng quyền xem.
 
-## Test intent
+## Mục đích kiểm thử
 
-- `TicketTest` is the executable state-machine specification.
-- `ResourceServerSecurityTest` verifies JWT/JWKS trust and principal conversion.
-- `TicketCrudIT` uses named actors such as `ACME_CUSTOMER` and semantic helpers such as
-  `changeStatusAs`; each test describes one externally visible rule.
+- `TicketTest` là đặc tả state machine có thể thực thi.
+- `ResourceServerSecurityTest` kiểm tra niềm tin JWT/JWKS và chuyển đổi principal.
+- `TicketCrudIT` dùng actor có tên như `ACME_CUSTOMER` và helper mang nghĩa như `changeStatusAs`; mỗi test mô tả một quy tắc nhìn thấy từ bên ngoài.
 
-DD-202 will add idempotent create and ETag/`If-Match`. Those concerns should not be mixed into the
-DD-201 domain rules.
+DD-202 bổ sung idempotent create và ETag/`If-Match`. Không trộn các mối quan tâm đó vào domain rule của DD-201.

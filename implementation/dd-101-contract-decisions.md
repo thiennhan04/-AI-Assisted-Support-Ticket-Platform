@@ -1,40 +1,25 @@
-# DD-101 Contract Decisions
+# Quyết định contract DD-101
 
-## Login tenant context
+## Ngữ cảnh tenant khi đăng nhập
 
-`POST /v1/auth/login` accepts `tenantCode`, `email`, and `password`. Email is unique only
-inside a tenant, so Identity resolves the normalized tenant code before selecting the user.
-This is the only endpoint allowed to accept tenant lookup context from an unauthenticated
-request. Authenticated APIs derive tenant exclusively from the verified JWT `tid` claim.
+`POST /v1/auth/login` nhận `tenantCode`, `email` và `password`. Email chỉ duy nhất trong phạm vi một tenant, vì vậy Identity phải xác định tenant code đã chuẩn hóa trước khi tìm user. Đây là endpoint duy nhất được phép nhận ngữ cảnh tra cứu tenant từ request chưa xác thực. API đã xác thực chỉ lấy tenant từ claim JWT `tid` đã được kiểm tra.
 
-Unknown, suspended, locked or disabled tenants/users and an invalid password all return the
-same `401 AUTH_INVALID_CREDENTIALS` response.
+Tenant/user không tồn tại, bị suspended, locked, disabled hoặc password sai đều trả cùng response `401 AUTH_INVALID_CREDENTIALS`.
 
-## Token response and story boundary
+## Token response và ranh giới story
 
-Login returns an RS256 access JWT, an opaque refresh token, `Bearer`, the access TTL in
-seconds, and a user summary. DD-101 creates the first refresh session and stores only the
-SHA-256 token hash. DD-102 owns refresh rotation, reuse detection and logout.
+Login trả access JWT RS256, refresh token opaque, loại `Bearer`, access TTL tính bằng giây và thông tin tóm tắt user. DD-101 tạo refresh session đầu tiên và chỉ lưu SHA-256 hash của token. DD-102 chịu trách nhiệm rotation, phát hiện reuse và logout.
 
-Access JWTs live for 15 minutes and contain `sub`, `tid`, `roles`, `iss`, `aud`, `jti`,
-`iat`, and `exp`. The protected JWT header contains `alg=RS256` and a mandatory `kid`.
+Access JWT có hiệu lực 15 phút và chứa `sub`, `tid`, `roles`, `iss`, `aud`, `jti`, `iat`, `exp`. Protected JWT header chứa `alg=RS256` và bắt buộc có `kid`.
 
-## Transaction boundary
+## Ranh giới transaction
 
-Password verification and token generation happen before a short write transaction. That
-transaction locks and revalidates the user, resets failed attempts, and persists the refresh
-session hash. Tokens are returned only after commit. Failed-attempt updates use an independent
-transaction so the generic authentication exception cannot roll them back.
+Việc kiểm tra password và tạo token diễn ra trước một write transaction ngắn. Transaction này lock và kiểm tra lại user, đặt lại số lần thất bại rồi lưu refresh session hash. Chỉ trả token sau khi commit. Cập nhật số lần thất bại dùng transaction độc lập để generic authentication exception không rollback thay đổi này.
 
-## Login protection
+## Bảo vệ login
 
-Five consecutive password failures temporarily lock a user for 15 minutes. A successful login
-resets the counter. `DISABLED` is an explicit administrator state. Redis limits attempts by a
-SHA-256 hash of normalized tenant/email and separately by the trusted remote IP. Default local
-limits are 10 attempts per 15 minutes, and rejected attempts return `429` with `Retry-After`.
+Năm lần sai password liên tiếp tạm khóa user trong 15 phút. Login thành công đặt lại bộ đếm. `DISABLED` là trạng thái quản trị viên đặt rõ ràng. Redis giới hạn số lần thử theo SHA-256 hash của tenant/email đã chuẩn hóa và riêng theo remote IP đáng tin cậy. Mặc định local là 10 lần trong 15 phút; request bị giới hạn trả `429` kèm `Retry-After`.
 
-## Tenant-safe persistence
+## Persistence an toàn theo tenant
 
-`user_role` and `refresh_session` carry `tenant_id`. Composite foreign keys prevent a role or
-session from referencing a user in another tenant. Repository operations used by application
-code always include tenant context.
+`user_role` và `refresh_session` có `tenant_id`. Composite foreign key ngăn role hoặc session tham chiếu user thuộc tenant khác. Mọi repository operation dùng bởi application code luôn kèm ngữ cảnh tenant.

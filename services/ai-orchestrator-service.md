@@ -1,18 +1,18 @@
-# AI Orchestrator Service - Detail Design
+# AI Orchestrator Service - Thiết kế chi tiết
 
-## 1. Responsibilities
+## 1. Trách nhiệm
 
-- Create and execute AI jobs.
-- Resolve prompt template/version and model configuration.
-- Retrieve knowledge context where required.
-- Call an LLM through provider-neutral ports.
-- Validate structured output and citation integrity.
-- Record tokens, latency, cost estimate and feedback.
-- Publish completed/failed events.
+- Tạo và thực thi các AI job.
+- Xác định template/phiên bản prompt và cấu hình model.
+- Truy xuất ngữ cảnh tri thức khi cần.
+- Gọi LLM thông qua các port độc lập với nhà cung cấp.
+- Kiểm tra structured output và tính toàn vẹn của citation.
+- Ghi nhận token, độ trễ, chi phí ước tính và phản hồi.
+- Phát các event hoàn thành/thất bại.
 
-It does not own ticket workflow or document ingestion.
+Service này không sở hữu quy trình ticket hoặc quy trình nhập tài liệu.
 
-## 2. Package structure
+## 2. Cấu trúc package
 
 ```text
 com.portfolio.ai
@@ -37,33 +37,32 @@ com.portfolio.ai
     messaging
 ```
 
-### Authenticated caller
+### Caller đã xác thực
 
-AI Orchestrator validates RS256 user access tokens locally with the Identity JWKS and maps verified
-`sub`, `tid`, and `roles` claims to `com.portfolio.ai.application.AuthenticatedPrincipal`. Prompt
-administration APIs can use the resulting role authorities. User access tokens are denied on
-`/internal/**`; AI Worker calls remain unavailable until the separate service-identity mechanism is
-implemented.
+AI Orchestrator tự kiểm tra access token người dùng dùng RS256 bằng JWKS của Identity, rồi ánh xạ các claim
+`sub`, `tid` và `roles` đã được xác minh vào `com.portfolio.ai.application.AuthenticatedPrincipal`. API
+quản trị prompt có thể dùng các role authority từ principal này. Access token người dùng bị từ chối tại
+`/internal/**`; lời gọi từ AI Worker chưa khả dụng cho đến khi cơ chế định danh service riêng được triển khai.
 
-## 3. Internal endpoints
+## 3. Internal endpoint
 
 ### `POST /internal/v1/ai-jobs`
 
-Caller: AI Worker with service credential.
+Bên gọi endpoint: AI Worker dùng service credential.
 
-Request includes `jobId`, `tenantId`, `jobType`, `subjectType`, `subjectId`, `input`, `requestedBy`, `correlationId`. `jobId` is client-generated to support retry idempotency.
+Request gồm `jobId`, `tenantId`, `jobType`, `subjectType`, `subjectId`, `input`, `requestedBy`, `correlationId`. `jobId` do client tạo để hỗ trợ retry idempotent.
 
-Response: `200` for already terminal identical job, `202` when accepted/executing, `409` when same job ID has different input hash.
+Response: `200` nếu job giống hệt đã ở trạng thái kết thúc, `202` khi đã nhận/đang chạy, `409` khi cùng job ID nhưng khác input hash.
 
 ### `GET /internal/v1/ai-jobs/{id}`
 
-Used for reconciliation only. Do not poll during normal event flow.
+Chỉ dùng để đối soát. Không polling trong luồng event thông thường.
 
-## 4. Job types
+## 4. Loại job
 
 ### `ANALYZE_TICKET`
 
-Input: subject, description and allowed metadata. Output schema:
+Dữ liệu vào: subject, description và metadata được cho phép. Schema đầu ra:
 
 ```json
 {
@@ -74,13 +73,13 @@ Input: subject, description and allowed metadata. Output schema:
 }
 ```
 
-Do not accept model-generated confidence as calibrated probability. If included, label it `modelSelfScore` and do not use for automated decisions.
+Không coi confidence do model sinh ra là xác suất đã được hiệu chỉnh. Nếu có trường này, đặt tên là `modelSelfScore` và không dùng để ra quyết định tự động.
 
 ### `DRAFT_REPLY`
 
-Input: ticket snapshot, latest comments, tone and locale. Retrieval query is built from subject + normalized description + latest customer comment.
+Dữ liệu vào: snapshot của ticket, các comment mới nhất, tone và locale. Retrieval query được tạo từ subject + description đã chuẩn hóa + comment mới nhất của khách hàng.
 
-Output schema:
+Schema đầu ra:
 
 ```json
 {
@@ -93,63 +92,63 @@ Output schema:
 }
 ```
 
-`needsHumanReview` is forced to true by backend regardless of model output.
+Backend luôn ép `needsHumanReview` thành true, bất kể output của model.
 
-## 5. Prompt management
+## 5. Quản lý prompt
 
-Prompt templates are immutable after activation. Fields: name, semantic version, job type, system template, user template, output schema, status, checksum.
+Prompt template là bất biến sau khi được kích hoạt. Các trường gồm: name, semantic version, job type, system template, user template, output schema, status và checksum.
 
-Promotion flow: `DRAFT -> VALIDATED -> ACTIVE -> RETIRED`. Only one active version per tenant/job type; a global default applies when no tenant override exists.
+Luồng phát hành: `DRAFT -> VALIDATED -> ACTIVE -> RETIRED`. Mỗi tenant/job type chỉ có một phiên bản active; dùng bản mặc định toàn hệ thống nếu tenant không cấu hình ghi đè.
 
-Every job stores prompt ID/version/checksum and model configuration. Never update historical jobs when a prompt changes.
+Mỗi job lưu prompt ID/version/checksum và cấu hình model. Không bao giờ cập nhật job lịch sử khi prompt thay đổi.
 
-## 6. Processing algorithm
+## 6. Thuật toán xử lý
 
-1. Validate internal caller and request schema.
-2. Compute canonical SHA-256 input hash.
-3. Insert or load job idempotently.
-4. Redact configured PII before provider transmission.
-5. For grounded job, query Knowledge Service with tenant/user ACL context.
-6. Build prompt with hard separators and untrusted-context label.
-7. Call model with low temperature and structured output schema.
-8. Parse JSON using strict object mapper; reject unknown fields if schema requires.
-9. Apply semantic validation: enum, lengths, forbidden content and citations.
-10. If parse fails, attempt one repair call containing validation errors but not secrets.
-11. Persist output and usage in one transaction with outbox result event.
-12. Return accepted/terminal status.
+1. Xác thực internal caller và request schema.
+2. Tính SHA-256 hash chuẩn hóa của input.
+3. Thêm mới hoặc tải job theo cách idempotent.
+4. Che dữ liệu PII đã cấu hình trước khi gửi tới nhà cung cấp.
+5. Với job cần nguồn tri thức, truy vấn Knowledge Service kèm ngữ cảnh ACL của tenant/người dùng.
+6. Dựng prompt với dấu phân cách rõ ràng và nhãn đánh dấu ngữ cảnh không đáng tin cậy.
+7. Gọi model với temperature thấp và structured output schema.
+8. Parse JSON bằng object mapper nghiêm ngặt; từ chối field lạ nếu schema yêu cầu.
+9. Kiểm tra ngữ nghĩa: enum, độ dài, nội dung bị cấm và citation.
+10. Nếu parse thất bại, thử một repair call chứa lỗi validation nhưng không chứa secret.
+11. Trong cùng một transaction, lưu output, usage và outbox result event.
+12. Trả trạng thái accepted/terminal.
 
-## 7. Citation validation
+## 7. Kiểm tra citation
 
-- The output citation set must be a subset of retrieved chunk IDs.
-- Each citation document ID must match the chunk's owning document.
-- Draft sentences containing factual instructions should have at least one citation when knowledge was available.
-- If no usable chunks are returned, set `NO_KNOWLEDGE`; do not fabricate citations.
-- Do not expose the full stored chunk in Ticket Service; provide short excerpt and document label.
+- Tập citation trong output phải là tập con của các chunk ID đã truy xuất.
+- Document ID của mỗi citation phải khớp với document sở hữu chunk đó.
+- Khi có tri thức phù hợp, các câu hướng dẫn mang tính sự thật trong bản nháp nên có ít nhất một citation.
+- Nếu không có chunk dùng được, đặt `NO_KNOWLEDGE`; không tự tạo citation.
+- Không trả toàn bộ nội dung chunk đã lưu cho Ticket Service; chỉ cung cấp đoạn trích ngắn và nhãn document.
 
-## 8. Provider abstraction
+## 8. Lớp trừu tượng nhà cung cấp
 
-`LanguageModelPort.generate(GenerationRequest): GenerationResult` contains model-neutral messages, JSON schema, timeout and metadata. The domain/application layers must not import provider SDK classes.
+`LanguageModelPort.generate(GenerationRequest): GenerationResult` chứa messages, JSON schema, timeout và metadata độc lập với model. Tầng domain/application không được import class từ SDK của nhà cung cấp.
 
-Implementations:
+Các implementation:
 
-- `FakeLanguageModelAdapter` for deterministic development/tests.
-- `SpringAiLanguageModelAdapter` for real provider.
-- Optional local-model adapter.
+- `FakeLanguageModelAdapter` cho môi trường phát triển/test có kết quả xác định.
+- `SpringAiLanguageModelAdapter` cho nhà cung cấp thật.
+- Có thể bổ sung adapter cho local model.
 
-## 9. Cost and limits
+## 9. Chi phí và giới hạn
 
-- Reject input above configured character/token estimate.
-- Cap retrieved context and output tokens per job type.
-- Record provider/model, input/output tokens, cached tokens, latency and estimated cost.
-- Enforce tenant daily budget in Redis with DB reconciliation. Budget exhaustion returns terminal `REJECTED/BUDGET_EXCEEDED` without provider call.
+- Từ chối input vượt quá ước tính ký tự/token đã cấu hình.
+- Giới hạn context được truy xuất và output token theo từng job type.
+- Ghi nhận provider/model, input/output token, cached token, độ trễ và chi phí ước tính.
+- Áp dụng ngân sách hằng ngày theo tenant trong Redis và đối soát với DB. Khi hết ngân sách, trả trạng thái kết thúc `REJECTED/BUDGET_EXCEEDED` mà không gọi nhà cung cấp.
 
-## 10. Tests
+## 10. Kiểm thử
 
-- Golden structured outputs for every job type.
-- Invalid JSON repair then success/failure.
-- Hallucinated citation rejected.
-- Provider timeout/retry/circuit behavior.
-- Prompt version pinned to job.
-- PII redaction.
-- Tenant budget concurrency.
-- Fake provider end-to-end event contract.
+- Golden structured output cho từng job type.
+- JSON không hợp lệ được repair rồi thành công/thất bại.
+- Từ chối citation không có trong nguồn truy xuất.
+- Hành vi timeout/retry/circuit của nhà cung cấp.
+- Phiên bản prompt được cố định theo job.
+- Che PII.
+- Xử lý đồng thời ngân sách tenant.
+- Luồng event end-to-end với fake provider.

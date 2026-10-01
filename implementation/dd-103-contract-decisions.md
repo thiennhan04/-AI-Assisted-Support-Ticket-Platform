@@ -1,35 +1,27 @@
-# DD-103 Contract Decisions
+# Quyết định contract DD-103
 
-## Token trust contract
+## Contract tin cậy token
 
-- Ticket, Knowledge, and AI Orchestrator are OAuth2 Resource Servers for user-facing APIs.
-- Only RS256 access tokens are accepted.
-- `JWT_ISSUER`, `JWT_AUDIENCE`, and `JWKS_URI` are required deployment contracts with local
-  defaults pointing to Identity on port 8081.
-- Signature, expiry/not-before timestamps, issuer, and audience are validated before claims are
-  mapped to an application principal.
-- `sub` and `tid` are mandatory UUID strings. `roles` is a non-empty array containing only
-  `CUSTOMER`, `AGENT`, or `ADMIN`.
+- Ticket, Knowledge và AI Orchestrator là OAuth2 Resource Server cho API hướng người dùng.
+- Chỉ chấp nhận access token RS256.
+- `JWT_ISSUER`, `JWT_AUDIENCE`, `JWKS_URI` là contract triển khai bắt buộc; giá trị local mặc định trỏ tới Identity ở port 8081.
+- Signature, thời gian expiry/not-before, issuer và audience được kiểm tra trước khi ánh xạ claim thành application principal.
+- `sub`, `tid` bắt buộc là chuỗi UUID. `roles` là array không rỗng, chỉ chứa `CUSTOMER`, `AGENT` hoặc `ADMIN`.
 
-## Principal and authorization
+## Principal và phân quyền
 
-- Each bounded context owns an `application.AuthenticatedPrincipal` containing `userId`,
-  `tenantId`, and an immutable role set.
-- JWT roles map to Spring authorities with the `ROLE_` prefix for method-level authorization.
-- Application and persistence code derive tenant exclusively from the verified principal. Request
-  bodies, query parameters, and arbitrary headers are never trusted as tenant identity.
-- `/actuator/health/**` and `/actuator/info` are public; other user-facing routes require a valid
-  access token.
+- Mỗi bounded context sở hữu `application.AuthenticatedPrincipal` chứa `userId`, `tenantId` và tập role bất biến.
+- JWT role được ánh xạ thành Spring authority có prefix `ROLE_` để phân quyền ở method.
+- Application và persistence code chỉ lấy tenant từ principal đã xác minh. Không bao giờ tin request body, query parameter hoặc header tùy ý như danh tính tenant.
+- `/actuator/health/**` và `/actuator/info` là public; route hướng người dùng khác yêu cầu access token hợp lệ.
 
-## Service-to-service boundary
+## Ranh giới service-to-service
 
-- User access tokens are denied on `/internal/**`.
-- Workload credentials and internal scopes/audiences are a separate implementation concern. Until
-  that mechanism exists, internal endpoints fail closed rather than accepting a user token.
+- Token người dùng bị từ chối tại `/internal/**`.
+- Workload credential và internal scope/audience là phạm vi triển khai riêng. Trước khi có cơ chế đó, internal endpoint phải fail closed thay vì nhận user token.
 
-## Key rotation
+## Xoay key
 
-- Resource services resolve keys by JWT `kid` from Identity JWKS.
-- Identity publishes the current and previous public key during the overlap window, allowing
-  already-issued tokens to remain valid until their normal expiry.
-- Private signing keys remain only in Identity and are never copied into resource services.
+- Resource service tìm key theo JWT `kid` từ Identity JWKS.
+- Identity công bố public key hiện tại và key trước đó trong khoảng overlap, cho phép token đã phát vẫn hợp lệ đến khi hết hạn tự nhiên.
+- Private signing key chỉ nằm trong Identity và không bao giờ sao chép sang resource service.

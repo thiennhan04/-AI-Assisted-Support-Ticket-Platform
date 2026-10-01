@@ -1,38 +1,23 @@
-# DD-102 Contract Decisions
+# Quyết định contract DD-102
 
-## Refresh request and response
+## Refresh request và response
 
-`POST /v1/auth/refresh` accepts `{ "refreshToken": "..." }` without an access JWT. The
-refresh token itself is the bearer credential, which allows a client to recover after its
-short-lived access token expires. Tokens are transported in JSON rather than cookies, so the
-current API does not require cookie-oriented CSRF protection.
+`POST /v1/auth/refresh` nhận `{ "refreshToken": "..." }` mà không cần access JWT. Bản thân refresh token là bearer credential, cho phép client khôi phục khi access token ngắn hạn hết hạn. Token được truyền trong JSON thay vì cookie, nên API hiện tại không cần cơ chế CSRF dành cho cookie.
 
-Every successful call returns the same token response shape as login, rotates the refresh token,
-and extends the new session expiry by the configured refresh TTL. Login and refresh responses use
-`Cache-Control: no-store` and `Pragma: no-cache`.
+Mỗi lần gọi thành công trả cùng cấu trúc token response như login, rotate refresh token và kéo dài hạn của session mới theo refresh TTL đã cấu hình. Response của login và refresh có `Cache-Control: no-store` và `Pragma: no-cache`.
 
-## Rotation and reuse
+## Rotation và reuse
 
-A refresh token is single-use. Rotation creates a new row with the same `family_id`, writes the
-new row's ID to the old row's `replaced_by_id`, and records `last_used_at`. The database enforces
-that a replacement session exists and cannot be referenced as the replacement of multiple rows.
+Refresh token chỉ dùng một lần. Rotation tạo row mới cùng `family_id`, ghi ID row mới vào `replaced_by_id` của row cũ và ghi `last_used_at`. Database bảo đảm replacement session tồn tại và không thể bị nhiều row cùng tham chiếu như replacement.
 
-Presenting an already rotated token is reuse, even if it has since expired. Reuse revokes every
-row in the family and returns `401 AUTH_REFRESH_REUSE_DETECTED`. Unknown, expired, revoked, or
-ineligible-user tokens return `401 AUTH_INVALID_REFRESH_TOKEN`.
+Gửi lại token đã rotate được coi là reuse, kể cả khi token đó đã hết hạn. Reuse thu hồi mọi row trong family và trả `401 AUTH_REFRESH_REUSE_DETECTED`. Token không tồn tại, hết hạn, đã thu hồi hoặc thuộc user không còn đủ điều kiện trả `401 AUTH_INVALID_REFRESH_TOKEN`.
 
-## Concurrency and transaction boundary
+## Xử lý đồng thời và ranh giới transaction
 
-Refresh selects the presented session using a pessimistic write lock. Concurrent requests for the
-same token serialize: the first rotates it and the second observes `replaced_by_id`, revokes the
-family, and fails. The reuse exception is configured not to roll back its family-revocation write.
+Refresh dùng pessimistic write lock khi chọn session. Các request đồng thời dùng cùng token được tuần tự hóa: request đầu rotate; request sau thấy `replaced_by_id`, thu hồi family rồi thất bại. Reuse exception được cấu hình để không rollback thao tác thu hồi family.
 
-JWT signing and refresh-token generation are local operations and occur inside this short
-transaction. No network or broker call is made while the database lock is held. A token response
-is visible to the caller only after commit.
+Ký JWT và tạo refresh token là thao tác local, diễn ra trong transaction ngắn này. Không gọi network hoặc broker khi đang giữ database lock. Caller chỉ nhìn thấy token response sau commit.
 
 ## Logout
 
-`POST /v1/auth/logout` accepts the same refresh-token request and revokes the submitted token's
-entire family. Logout returns `204` for known, unknown, previously rotated, or already revoked
-tokens. This makes logout idempotent and avoids disclosing whether a token exists.
+`POST /v1/auth/logout` nhận cùng refresh-token request và thu hồi toàn bộ family của token được gửi. Logout trả `204` cho token đã biết, không biết, đã rotate hoặc đã thu hồi. Cách này làm logout idempotent và không tiết lộ token có tồn tại hay không.

@@ -1,8 +1,8 @@
-# Local Development and Repository Bootstrap
+# Phát triển local và khởi tạo repository
 
-## 1. Recommended repository layout
+## 1. Cấu trúc repository đề xuất
 
-Use a monorepo for portfolio development while preserving service boundaries:
+Dùng monorepo để phát triển portfolio nhưng vẫn giữ ranh giới service:
 
 ```text
 ticket-ai-platform/
@@ -25,30 +25,30 @@ ticket-ai-platform/
   .github/workflows/
 ```
 
-Do not create a shared domain-model library. Only event DTOs and test utilities may be shared. This prevents accidental database/entity coupling.
+Không tạo thư viện domain model dùng chung. Chỉ event DTO và test utility được chia sẻ. Quy tắc này ngăn coupling vô tình qua database/entity.
 
-## 2. Per-service bootstrap
+## 2. Khởi tạo từng service
 
-Spring Initializr dependencies:
+Dependency từ Spring Initializr:
 
 - Spring Web.
 - Validation.
-- Spring Security and OAuth2 Resource Server.
+- Spring Security và OAuth2 Resource Server.
 - Spring Data JPA.
 - Flyway.
 - PostgreSQL driver.
 - Actuator.
 - Micrometer tracing/OTLP.
-- AMQP where publishing/consuming.
+- AMQP cho nơi publish/consume.
 - Testcontainers PostgreSQL/RabbitMQ.
 
-AI Orchestrator adds Spring AI model integration. Knowledge Service adds pgvector support and document extraction libraries. Pin dependency versions through a root BOM or Renovate-controlled properties.
+AI Orchestrator bổ sung tích hợp Spring AI model. Knowledge Service bổ sung pgvector và thư viện trích xuất tài liệu. Cố định dependency version qua BOM ở root hoặc property do Renovate quản lý.
 
-## 3. Local containers
+## 3. Container local
 
-Compose should provide:
+Compose cung cấp:
 
-| Container | Local port |
+| Container | Port local |
 |---|---:|
 | PostgreSQL | 5432 |
 | RabbitMQ AMQP/UI | 5672/15672 |
@@ -58,21 +58,21 @@ Compose should provide:
 | Prometheus | 9090 |
 | Grafana | 3000 |
 
-Use one PostgreSQL container with separate local databases/users: `identity_db`, `ticket_db`, `ai_db`, `knowledge_db`.
+Dùng một PostgreSQL container với database/user local riêng: `identity_db`, `ticket_db`, `ai_db`, `knowledge_db`.
 
-## 4. Developer run sequence
+## 4. Trình tự chạy cho developer
 
-1. Start infrastructure: `docker compose up -d postgres rabbitmq redis minio otel prometheus grafana`.
-2. Start Identity, Ticket, Knowledge and AI Orchestrator with `local` profile.
-3. Start Worker last.
-4. Run local bootstrap script to create tenant/admin/sample knowledge.
-5. Import `contracts/openapi.yaml` into an API client or generate frontend client.
-6. Use fake AI/embedding providers until infrastructure flow passes.
-7. Set provider secret locally outside repository to test real model.
+1. Khởi động hạ tầng: `docker compose up -d postgres rabbitmq redis minio otel prometheus grafana`.
+2. Chạy Identity, Ticket, Knowledge và AI Orchestrator với profile `local`.
+3. Chạy Worker sau cùng.
+4. Chạy local bootstrap script để tạo tenant/admin/sample knowledge.
+5. Import `contracts/openapi.yaml` vào API client hoặc sinh frontend client.
+6. Dùng fake AI/embedding provider cho đến khi luồng hạ tầng chạy ổn.
+7. Đặt provider secret ở local, bên ngoài repository để thử model thật.
 
-### Run Identity Service locally (DD-101)
+### Chạy Identity Service ở local (DD-101)
 
-From the repository root on Windows PowerShell:
+Từ thư mục gốc repository trên Windows PowerShell:
 
 ```powershell
 docker compose -f deploy/compose.yaml up -d postgres redis
@@ -83,12 +83,9 @@ $env:LOCAL_SEED_PASSWORD = "ChangeMe123!"
 .\mvnw.cmd -pl services/identity-service -am spring-boot:run
 ```
 
-The opt-in seed creates tenant `acme` and three users: `admin@acme.local`,
-`agent@acme.local`, and `customer@acme.local`. They use the password supplied through
-`LOCAL_SEED_PASSWORD`. Disable the seed outside local development and never commit private keys;
-`.local/` is ignored by Git.
+Seed tùy chọn tạo tenant `acme` và ba user: `admin@acme.local`, `agent@acme.local`, `customer@acme.local`. Chúng dùng password từ `LOCAL_SEED_PASSWORD`. Tắt seed ngoài môi trường local và không bao giờ commit private key; `.local/` đã bị Git ignore.
 
-Login example:
+Ví dụ login:
 
 ```powershell
 $body = @{
@@ -100,7 +97,7 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8081/v1/auth/login `
   -ContentType application/json -Body $body
 ```
 
-To rotate and then revoke the returned refresh-token family:
+Để rotate rồi thu hồi refresh-token family được trả về:
 
 ```powershell
 $tokens = Invoke-RestMethod -Method Post -Uri http://localhost:8081/v1/auth/login `
@@ -113,13 +110,11 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8081/v1/auth/logout `
   -ContentType application/json -Body $logoutBody
 ```
 
-Public key discovery is available at `http://localhost:8081/.well-known/jwks.json`. The
-private RSA key is used only by Identity to sign access tokens and is never returned.
+Public key được công bố tại `http://localhost:8081/.well-known/jwks.json`. Private RSA key chỉ được Identity dùng để ký access token và không bao giờ trả ra ngoài.
 
-### Run a resource service locally (DD-103)
+### Chạy resource service ở local (DD-103)
 
-Start Identity first, then configure Ticket, Knowledge, or AI Orchestrator with the same token
-contract:
+Chạy Identity trước, sau đó cấu hình Ticket, Knowledge hoặc AI Orchestrator với cùng token contract:
 
 ```powershell
 $env:JWT_ISSUER = "http://localhost:8081"
@@ -128,14 +123,11 @@ $env:JWKS_URI = "http://localhost:8081/.well-known/jwks.json"
 .\mvnw.cmd -pl services/ticket-service -am spring-boot:run
 ```
 
-Call protected APIs with `Authorization: Bearer <accessToken>`. Each resource service downloads and
-caches public keys from JWKS; it never receives the Identity private key. Health and info endpoints
-remain public. User tokens cannot call `/internal/**`.
+Gọi protected API bằng `Authorization: Bearer <accessToken>`. Mỗi resource service tải và cache public key từ JWKS; không bao giờ nhận private key của Identity. Health/info endpoint vẫn public. User token không thể gọi `/internal/**`.
 
-### Exercise Ticket CRUD locally (DD-201)
+### Thử Ticket CRUD ở local (DD-201)
 
-Keep Identity running, start PostgreSQL if needed, and run Ticket Service with the same JWT
-settings shown above. Obtain `accessToken` from `/v1/auth/login`, then create and query a ticket:
+Giữ Identity chạy, khởi động PostgreSQL nếu cần và chạy Ticket Service với cấu hình JWT trên. Lấy `accessToken` từ `/v1/auth/login`, sau đó tạo và truy vấn ticket:
 
 ```powershell
 $headers = @{
@@ -162,40 +154,37 @@ Invoke-RestMethod -Method Post `
 Invoke-RestMethod -Method Get -Uri http://localhost:8082/v1/tickets -Headers $headers
 ```
 
-Do not put `tenantId` or `requesterId` in the request. Ticket Service derives both from the verified
-access token. Keep the response `ETag` and send it as `If-Match` when updating the ticket. Repeating
-a create request with the same `Idempotency-Key` and body returns the original ticket; reusing that
-key with a different body returns `409`.
+Không đặt `tenantId` hoặc `requesterId` trong request. Ticket Service lấy cả hai từ access token đã xác minh. Giữ `ETag` trong response và gửi nó dưới dạng `If-Match` khi cập nhật ticket. Lặp create request với cùng `Idempotency-Key` và body trả ticket ban đầu; dùng lại key với body khác trả `409`.
 
-## 5. Local fake provider behavior
+## 5. Hành vi fake provider local
 
-The fake provider must be deterministic:
+Fake provider phải cho kết quả xác định:
 
-- Subject containing `password` -> category ACCOUNT.
-- Subject containing `payment` -> category PAYMENT.
-- Draft reply cites the first returned chunk.
-- Special marker `[INVALID_JSON]` triggers invalid-output test.
-- Special marker `[TIMEOUT]` triggers timeout test.
+- Subject chứa `password` -> category ACCOUNT.
+- Subject chứa `payment` -> category PAYMENT.
+- Draft reply cite chunk đầu tiên được trả về.
+- Marker đặc biệt `[INVALID_JSON]` kích hoạt test output không hợp lệ.
+- Marker đặc biệt `[TIMEOUT]` kích hoạt timeout test.
 
-This makes end-to-end tests reliable without paid API/network.
+Nhờ đó end-to-end test ổn định mà không cần API trả phí/network.
 
-## 6. Health endpoints
+## 6. Health endpoint
 
-- `/actuator/health/liveness`: process/JVM only.
-- `/actuator/health/readiness`: required DB/broker for service responsibility.
-- `/actuator/prometheus`: private network only.
-- `/actuator/info`: build commit/version, no secrets.
+- `/actuator/health/liveness`: chỉ process/JVM.
+- `/actuator/health/readiness`: DB/broker cần thiết cho trách nhiệm service.
+- `/actuator/prometheus`: chỉ private network.
+- `/actuator/info`: build commit/version, không có secret.
 
 ## 7. CI pipeline
 
-For each pull request:
+Với mỗi pull request:
 
-1. Compile with warnings visible.
-2. Unit and architecture tests.
-3. Integration tests with Testcontainers.
-4. OpenAPI lint and backward-compatibility check.
+1. Compile và hiển thị warning.
+2. Unit test và architecture test.
+3. Integration test bằng Testcontainers.
+4. OpenAPI lint và kiểm tra backward compatibility.
 5. Event schema validation.
-6. Static analysis and dependency vulnerability scan.
-7. Build immutable container image tagged with commit SHA.
+6. Static analysis và quét lỗ hổng dependency.
+7. Build container image bất biến, tag bằng commit SHA.
 
-Main branch additionally runs end-to-end fake-provider suite and pushes images.
+Nhánh main chạy thêm end-to-end fake-provider suite và push image.

@@ -1,24 +1,20 @@
-# DD-002 Local Infrastructure
+# Hạ tầng local DD-002
 
-This directory contains the local infrastructure required by the five application modules.
-It does not run the application images themselves.
+Thư mục này chứa hạ tầng local cần cho năm application module. Nó không chạy các application image.
 
-## What is provisioned
+## Thành phần được provision
 
-- PostgreSQL 16 with pgvector and one persistent volume.
-- Four service-owned databases and users: `identity_db`, `ticket_db`, `ai_db`, and
-  `knowledge_db`.
-- The `vector` extension in `knowledge_db`.
-- RabbitMQ with the management UI, Redis with AOF persistence, and MinIO with a private
-  `knowledge` bucket.
-- OpenTelemetry Collector, Prometheus, and a provisioned Grafana data source/dashboard.
+- PostgreSQL 16 có pgvector và một persistent volume.
+- Bốn database/user riêng cho service: `identity_db`, `ticket_db`, `ai_db`, `knowledge_db`.
+- Extension `vector` trong `knowledge_db`.
+- RabbitMQ có management UI, Redis dùng AOF persistence và MinIO có private bucket `knowledge`.
+- OpenTelemetry Collector, Prometheus và Grafana data source/dashboard đã provision.
 
-All images are pinned. All stateful components use named Docker volumes. Local credentials
-come from the root `.env` file and have development-only defaults in `.env.example`.
+Mọi image đều được cố định phiên bản. Mọi thành phần có state dùng named Docker volume. Credential local lấy từ `.env` ở thư mục gốc và có giá trị mặc định chỉ dành cho phát triển trong `.env.example`.
 
-## Start
+## Khởi động
 
-From the repository root:
+Từ thư mục gốc repository:
 
 ```powershell
 Copy-Item .env.example .env
@@ -26,12 +22,11 @@ docker compose --env-file .env -f deploy/compose.yaml up -d
 docker compose --env-file .env -f deploy/compose.yaml ps
 ```
 
-The one-shot `minio-init` container should finish with exit code 0. Long-running containers
-should report `healthy`.
+Container chạy một lần `minio-init` phải kết thúc với exit code 0. Container chạy dài hạn phải báo `healthy`.
 
-## Local endpoints
+## Endpoint local
 
-| Component | Endpoint |
+| Thành phần | Endpoint |
 |---|---|
 | PostgreSQL | `localhost:5432` |
 | RabbitMQ | `amqp://localhost:5672` |
@@ -43,15 +38,14 @@ should report `healthy`.
 | Prometheus | `http://localhost:9090` |
 | Grafana | `http://localhost:3000` |
 
-Use credentials from `.env`. Do not use the example credentials outside a local machine.
+Dùng credential từ `.env`. Không dùng credential mẫu bên ngoài máy local.
 
-## Stop or reset
+## Dừng hoặc reset
 
-Stop containers while preserving data:
+Dừng container nhưng giữ dữ liệu:
 
 ```powershell
 docker compose --env-file .env -f deploy/compose.yaml down
 ```
 
-Starting again reuses the named volumes. To intentionally delete all DD-002 local data, add
-`--volumes` to the command. That operation is destructive and is not part of normal cleanup.
+Lần khởi động sau dùng lại named volume. Khi chủ động muốn xóa toàn bộ dữ liệu local DD-002, thêm `--volumes` vào lệnh. Thao tác này phá hủy dữ liệu và không thuộc quy trình dọn dẹp thông thường.

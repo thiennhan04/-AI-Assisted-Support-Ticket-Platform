@@ -1,16 +1,15 @@
-# Identity Service - Detail Design
+# Thiết kế chi tiết Identity Service
 
-## 1. Responsibilities
+## 1. Trách nhiệm
 
-- Register/invite users.
-- Authenticate email/password.
-- Issue short-lived access JWT and rotating refresh token.
-- Revoke sessions and expose JWKS public keys.
-- Manage tenant-scoped roles: `CUSTOMER`, `AGENT`, `ADMIN`.
+- Đăng ký/mời user và quản lý role theo tenant: `CUSTOMER`, `AGENT`, `ADMIN`.
+- Xác thực email/password.
+- Phát access JWT ngắn hạn và rotating refresh token.
+- Thu hồi session và công bố JWKS public key.
 
-Out of scope: ticket ownership, document ACL and UI profile preferences.
+Không thuộc phạm vi: ticket ownership, document ACL và tùy chọn UI profile.
 
-## 2. Package structure
+## 2. Cấu trúc package
 
 ```text
 com.portfolio.identity
@@ -35,89 +34,85 @@ com.portfolio.identity
     config
 ```
 
-Dependencies point inward: `api -> application -> domain`; infrastructure implements domain ports.
+Dependency hướng vào trong: `api -> application -> domain`; infrastructure hiện thực domain port.
 
-## 3. Endpoints
+## 3. Endpoint
 
 ### `POST /v1/auth/login`
 
 Request: `{ "tenantCode": "acme", "email": "agent@example.com", "password": "..." }`.
-`tenantCode` is the unauthenticated lookup context because email is unique only inside a tenant.
-After login, services derive tenant exclusively from the verified JWT `tid` claim.
+`tenantCode` là lookup context khi chưa xác thực vì email chỉ unique trong tenant. Sau login, service
+chỉ lấy tenant từ claim JWT `tid` đã xác minh.
 
-Response `200`: access token, refresh token, `expiresIn`, user summary. Generic `401 AUTH_INVALID_CREDENTIALS` for unknown user or wrong password.
+Response `200` gồm access token, refresh token, `expiresIn` và user summary. User không tồn tại hoặc
+sai password đều trả `401 AUTH_INVALID_CREDENTIALS` giống nhau.
 
 ### `POST /v1/auth/refresh`
 
-Accepts `{ "refreshToken": "..." }`. Rotate on every use inside a short database transaction:
-lock the presented session, mark it replaced and issue a new token family member. Reuse of an
-already rotated token revokes the entire family and returns
-`401 AUTH_REFRESH_REUSE_DETECTED`. Unknown, expired, revoked, or ineligible-user tokens return
+Nhận `{ "refreshToken": "..." }`. Mỗi lần dùng phải rotate trong transaction ngắn: lock session,
+đánh dấu replaced và tạo thành viên mới trong token family. Dùng lại token đã rotate sẽ revoke cả
+family và trả `401 AUTH_REFRESH_REUSE_DETECTED`. Token lạ, hết hạn, revoked hoặc user không hợp lệ trả
 `401 AUTH_INVALID_REFRESH_TOKEN`.
 
 ### `POST /v1/auth/logout`
 
-Accepts `{ "refreshToken": "..." }` and revokes the submitted session's entire family. It is
-idempotent and always returns `204` for a well-formed request, including when the token is unknown
-or already revoked.
+Nhận `{ "refreshToken": "..." }` và revoke toàn bộ family. Endpoint idempotent, luôn trả `204` với
+request đúng định dạng kể cả token lạ hoặc đã revoke.
 
 ### `GET /.well-known/jwks.json`
 
-Returns active and previous public keys. Cache control: five minutes. Key ID (`kid`) is mandatory.
+Trả public key hiện tại và trước đó, cache năm phút; bắt buộc có key ID (`kid`).
 
-### Admin users
+### Quản trị user
 
 - `POST /v1/admin/users`
 - `GET /v1/admin/users`
 - `PATCH /v1/admin/users/{id}/roles`
 - `PATCH /v1/admin/users/{id}/status`
 
-All require `ADMIN` and same tenant.
+Tất cả yêu cầu `ADMIN` và cùng tenant.
 
-## 4. JWT claims
+## 4. JWT claim
 
-| Claim | Meaning |
+| Claim | Ý nghĩa |
 |---|---|
 | `sub` | user UUID |
 | `tid` | tenant UUID |
-| `roles` | string array |
-| `iss` | configured issuer |
+| `roles` | mảng string |
+| `iss` | issuer đã cấu hình |
 | `aud` | `ticket-platform` |
 | `jti` | token UUID |
-| `iat`, `exp` | issued/expiry time |
+| `iat`, `exp` | thời điểm phát/hết hạn |
 
-Access TTL: 15 minutes. Refresh TTL: 30 days. Services reject missing `tid`, invalid audience or unknown signing key.
+Access TTL 15 phút, refresh TTL 30 ngày. Service từ chối thiếu `tid`, sai audience hoặc signing key
+không biết.
 
 ## 5. Persistence
 
-Use tables `tenant`, `app_user`, `user_role`, `refresh_session`, `outbox_event`. Email uniqueness is case-insensitive per tenant. Store refresh token as SHA-256 hash, never plaintext.
+Dùng các bảng `tenant`, `app_user`, `user_role`, `refresh_session`, `outbox_event`. Email unique không
+phân biệt hoa thường trong tenant. Chỉ lưu SHA-256 hash của refresh token, không lưu plaintext.
 
-## 6. Transaction rules
+## 6. Quy tắc transaction
 
-- Login verification and refresh-session creation occur in one transaction after password verification.
-- Token generation/signing occurs before the short write transaction. The write transaction locks and
-  revalidates the user, resets failed attempts and stores only the refresh-token hash. Tokens are returned
-  only after commit, so a signing or persistence failure never exposes an untracked token.
-- Refresh locks the presented session pessimistically. Exactly one concurrent request can rotate it.
-  Reuse detection revokes every session in the family and commits that revocation before returning
-  the security error.
-- Role/status updates increment `app_user.version` and publish `identity.user.changed.v1` through outbox.
+- Sau khi kiểm tra password, xác minh login và tạo refresh session trong một transaction.
+- Sinh/ký token trước write transaction ngắn. Transaction lock và kiểm tra lại user, reset failed
+  attempt và chỉ lưu refresh-token hash. Chỉ trả token sau commit.
+- Refresh dùng pessimistic lock; chỉ một request đồng thời được rotate. Reuse detection phải commit
+  việc revoke cả family trước khi trả lỗi bảo mật.
+- Đổi role/status tăng `app_user.version` và phát `identity.user.changed.v1` qua outbox.
 
-## 7. Security details
+## 7. Chi tiết bảo mật
 
-- Rate limit login by normalized email hash and IP: 10 attempts/15 minutes.
-- Add uniform 150-300 ms randomized delay to failed login.
-- Temporarily lock after five consecutive failures for 15 minutes by default. `DISABLED` is an explicit
-  admin state and is never cleared automatically.
-- Never log password, access token or refresh token.
-- Clock skew allowance: 60 seconds.
+- Rate limit login theo normalized email hash và IP: 10 lần/15 phút.
+- Thêm độ trễ ngẫu nhiên 150–300 ms khi login lỗi.
+- Khóa tạm 15 phút sau năm lần sai liên tiếp. `DISABLED` là trạng thái Admin đặt và không tự xóa.
+- Không log password, access token hoặc refresh token; cho phép clock skew 60 giây.
 
-## 8. Tests
+## 8. Kiểm thử
 
-- Successful login and claim assertions.
-- Wrong password and unknown email return identical response.
-- Refresh rotation and family reuse detection.
-- Revoked/disabled user cannot refresh.
-- Cross-tenant admin access denied.
-- JWKS contains current/previous keys.
-- Concurrent refresh permits exactly one success.
+- Login thành công và claim đúng.
+- Sai password/email lạ trả response giống nhau.
+- Refresh rotation, family reuse detection và concurrent refresh chỉ một thành công.
+- Người dùng bị revoked/disabled không refresh được.
+- Từ chối Admin cross-tenant.
+- JWKS chứa key hiện tại/trước đó.

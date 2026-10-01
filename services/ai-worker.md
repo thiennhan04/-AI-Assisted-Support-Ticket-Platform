@@ -1,78 +1,77 @@
-# AI Worker - Detail Design
+# AI Worker - Thiết kế chi tiết
 
-## 1. Responsibilities
+## 1. Trách nhiệm
 
-- Consume ticket and knowledge events.
-- Translate events into internal service commands.
-- Execute retry policy without duplicating business state.
-- Publish operational failure/reconciliation signals.
+- Nhận các event của ticket và knowledge.
+- Chuyển event thành internal command gọi tới service tương ứng.
+- Thực thi chính sách retry mà không tạo trùng business state.
+- Phát tín hiệu lỗi vận hành/đối soát.
 
-The Worker does not store domain state and does not call the LLM directly.
+Worker không lưu domain state và không gọi trực tiếp LLM.
 
-## 2. Consumers
+## 2. Consumer
 
-| Queue | Routing keys | Handler |
+| Queue | Routing key | Handler |
 |---|---|---|
 | `ai.ticket-analysis.q` | `ticket.created.v1`, `ticket.analysis.requested.v1` | `TicketAnalysisConsumer` |
 | `ai.ticket-draft.q` | `ticket.draft.requested.v1` | `TicketDraftConsumer` |
 | `knowledge.ingest.q` | `knowledge.ingest.requested.v1` | `KnowledgeIngestConsumer` |
 
-Each queue has a retry exchange and DLQ.
+Mỗi queue có retry exchange và DLQ.
 
-## 3. Processing template
+## 3. Mẫu xử lý
 
-1. Deserialize envelope and validate schema version.
-2. Put trace/correlation/tenant metadata in context.
-3. Acquire Redis lease `worker:{consumer}:{eventId}` with 90-second TTL.
-4. Call owning internal endpoint using `eventId`/`jobId` as idempotency identity.
-5. Acknowledge only on terminal success or confirmed idempotent duplicate.
-6. On retryable exception, reject to retry route with incremented attempt header.
-7. On permanent validation/authorization error, publish failure event and acknowledge.
-8. Clear context and release lease.
+1. Deserialize envelope và kiểm tra schema version.
+2. Đưa metadata trace/correlation/tenant vào context.
+3. Giữ Redis lease `worker:{consumer}:{eventId}` với TTL 90 giây.
+4. Gọi internal endpoint của service sở hữu dữ liệu, dùng `eventId`/`jobId` làm định danh idempotency.
+5. Chỉ acknowledge khi thành công ở trạng thái kết thúc hoặc xác nhận là bản gọi trùng idempotent.
+6. Với lỗi có thể retry, reject sang retry route và tăng attempt header.
+7. Với lỗi validation/authorization vĩnh viễn, phát failure event rồi acknowledge.
+8. Xóa context và giải phóng lease.
 
-Redis lease is an optimization, not the correctness boundary. Correctness comes from service-side unique constraints.
+Redis lease chỉ là tối ưu hóa, không phải ranh giới bảo đảm tính đúng đắn. Tính đúng đắn đến từ unique constraint phía service.
 
-## 4. Retry schedule
+## 4. Lịch retry
 
-Attempts after initial delivery: 10 seconds, 1 minute, 5 minutes, 30 minutes. Then DLQ. Preserve original `eventId`; add `attempt`, `firstOccurredAt`, `lastErrorCode` headers.
+Các lần thử sau lần gửi đầu: 10 giây, 1 phút, 5 phút, 30 phút. Sau đó chuyển vào DLQ. Giữ nguyên `eventId`; bổ sung các header `attempt`, `firstOccurredAt`, `lastErrorCode`.
 
-Retryable:
+Lỗi có thể retry:
 
 - HTTP 408, 429, 502, 503, 504.
-- connection/timeout failures.
-- transient database or broker failures.
+- Lỗi kết nối/timeout.
+- Lỗi database hoặc broker tạm thời.
 
-Permanent:
+Lỗi vĩnh viễn:
 
-- invalid event schema.
-- subject not found after reconciliation delay.
-- tenant mismatch.
-- unsupported job type.
-- provider policy rejection.
+- Event schema không hợp lệ.
+- Không tìm thấy subject sau khoảng trễ đối soát.
+- Tenant không khớp.
+- Job type không được hỗ trợ.
+- Bị từ chối theo chính sách của nhà cung cấp.
 
-## 5. Concurrency
+## 5. Xử lý đồng thời
 
-- Ticket analysis prefetch: 10 per instance.
-- Draft reply prefetch: 5 per instance.
-- Knowledge ingest prefetch: 2 per instance.
-- Separate thread pools prevent large document ingestion from starving ticket analysis.
-- Graceful shutdown stops intake and allows 60 seconds for in-flight work.
+- Ticket analysis prefetch: 10 mỗi instance.
+- Draft reply prefetch: 5 mỗi instance.
+- Knowledge ingest prefetch: 2 mỗi instance.
+- Các thread pool riêng ngăn việc nhập tài liệu lớn chiếm hết tài nguyên của ticket analysis.
+- Graceful shutdown dừng nhận việc mới và dành 60 giây cho công việc đang chạy.
 
-## 6. Reconciliation
+## 6. Đối soát
 
-A scheduled reconciliation job runs every 15 minutes:
+Scheduled reconciliation job chạy mỗi 15 phút:
 
-- Finds Ticket Service AI requests still `QUEUED` beyond five minutes.
-- Checks AI Orchestrator by job ID.
-- Republishes missing requests using same job/event identity.
-- Never creates a new logical job ID.
+- Tìm các AI request trong Ticket Service vẫn ở trạng thái `QUEUED` quá năm phút.
+- Kiểm tra AI Orchestrator theo job ID.
+- Phát lại request bị thiếu với cùng job/event identity.
+- Không bao giờ tạo logical job ID mới.
 
-## 7. Tests
+## 7. Kiểm thử
 
-- Duplicate delivery produces one job.
-- Retryable vs permanent classification.
-- Retry headers and DLQ behavior.
-- Trace propagation.
+- Nhận event trùng chỉ tạo một job.
+- Phân loại lỗi có thể retry và lỗi vĩnh viễn.
+- Retry header và hành vi DLQ.
+- Truyền trace.
 - Graceful shutdown.
-- Concurrency pool isolation.
-
+- Cô lập các concurrency pool.

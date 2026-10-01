@@ -1,12 +1,15 @@
-# System Architecture
+# Kiến trúc hệ thống
 
-## 1. Architectural style
+## 1. Phong cách kiến trúc
 
-The platform uses independently deployable services with database-per-service ownership. Synchronous REST is used for user-facing reads/commands that require an immediate response. RabbitMQ is used for long-running AI work and domain-event propagation.
+Nền tảng gồm các service có thể triển khai độc lập, mỗi service sở hữu database riêng. REST đồng bộ
+được dùng cho thao tác đọc/lệnh từ người dùng cần phản hồi ngay. RabbitMQ được dùng cho tác vụ AI
+chạy lâu và truyền domain event.
 
-AI is isolated behind AI Orchestrator so Ticket Service never depends directly on an LLM SDK. Knowledge retrieval is isolated because it has a separate data lifecycle, vector index and authorization model.
+AI được cô lập sau AI Orchestrator để Ticket Service không phụ thuộc trực tiếp vào SDK của LLM.
+Knowledge Service được tách riêng vì có vòng đời dữ liệu, vector index và mô hình phân quyền riêng.
 
-## 2. Logical components
+## 2. Các thành phần logic
 
 ```mermaid
 flowchart TD
@@ -23,86 +26,96 @@ flowchart TD
   Broker --> Ticket
 ```
 
-## 3. Service boundaries
+## 3. Ranh giới service
 
 ### Identity Service
 
-Owns user credentials, roles, sessions and token revocation. It does not own business profiles, tickets or knowledge permissions beyond identity claims.
+Sở hữu thông tin đăng nhập, role, session và thu hồi token. Service này không sở hữu business
+profile, ticket hay quyền truy cập knowledge ngoài các identity claim.
 
 ### Ticket Service
 
-System of record for ticket workflow. It owns current ticket state and a projection of AI results needed by the UI. It must not contain provider-specific prompt or SDK code.
+Là nguồn dữ liệu chuẩn cho quy trình ticket. Service sở hữu trạng thái hiện tại của ticket và bản
+chiếu kết quả AI cần cho UI. Không được chứa prompt hoặc mã SDK riêng của nhà cung cấp AI.
 
 ### AI Orchestrator Service
 
-Owns AI jobs, prompt templates, provider calls, output validation, usage records and user feedback. It must not update ticket tables directly.
+Sở hữu AI job, prompt template, lời gọi provider, kiểm tra output, usage record và phản hồi người
+dùng. Không được cập nhật trực tiếp bảng của Ticket Service.
 
 ### Knowledge Service
 
-Owns knowledge documents, ingestion status, chunks, embeddings, ACL metadata and semantic search. It never generates the final reply.
+Sở hữu tài liệu, trạng thái ingest, chunk, embedding, metadata ACL và semantic search. Service này
+không sinh câu trả lời cuối cùng.
 
 ### AI Worker
 
-Consumes events, calls service APIs and publishes result events. It is stateless apart from Redis leases/idempotency keys. Business state remains in owning services.
+Nhận event, gọi API của các service và phát result event. Worker không giữ trạng thái ngoài Redis
+lease/idempotency key; business state luôn nằm tại service sở hữu.
 
-## 4. Communication matrix
+## 4. Ma trận giao tiếp
 
-| Caller | Callee | Mode | Purpose | Timeout | Retry |
+| Bên gọi | Bên nhận | Cách gọi | Mục đích | Timeout | Retry |
 |---|---|---|---|---:|---|
-| Client | Gateway/services | REST | User commands and queries | 15 s | client-controlled for safe GET only |
-| Worker | AI Orchestrator | REST | Execute an AI job | 60 s | 2 with exponential backoff |
-| AI Orchestrator | Knowledge Service | REST | Retrieve grounded context | 3 s | 1 |
-| AI Orchestrator | LLM provider | SDK/HTTPS | Structured generation | 30 s | 2 for retryable errors |
-| Services | RabbitMQ | event | Domain/result propagation | async | broker redelivery + DLQ |
+| Client | Gateway/services | REST | Lệnh và truy vấn của người dùng | 15 s | client chỉ retry GET an toàn |
+| Worker | AI Orchestrator | REST | Thực thi AI job | 60 s | 2 lần, exponential backoff |
+| AI Orchestrator | Knowledge Service | REST | Lấy ngữ cảnh có căn cứ | 3 s | 1 lần |
+| AI Orchestrator | LLM provider | SDK/HTTPS | Sinh output có cấu trúc | 30 s | 2 lần với lỗi cho phép retry |
+| Services | RabbitMQ | event | Truyền domain/result event | async | broker redelivery + DLQ |
 
-No service may perform a synchronous call inside a database transaction.
+Không service nào được gọi đồng bộ sang service khác khi đang giữ database transaction.
 
-## 5. Data ownership rules
+## 5. Quy tắc sở hữu dữ liệu
 
-- A service reads another service's data only through a published API or event.
-- Cross-database joins are prohibited.
-- Ticket Service stores `ai_analysis_id`, selected fields and presentation snapshot, not AI prompt internals.
-- AI Orchestrator stores ticket text snapshots only as long as required for audit; default 30 days.
-- Knowledge Service returns citation identifiers and excerpts only after tenant and ACL filtering.
+- Service chỉ đọc dữ liệu của service khác qua API hoặc event đã công bố.
+- Cấm join xuyên database.
+- Ticket Service lưu `ai_analysis_id`, các field đã chọn và snapshot trình bày, không lưu nội bộ
+  prompt của AI.
+- AI Orchestrator chỉ giữ snapshot nội dung ticket trong thời gian cần cho audit; mặc định 30 ngày.
+- Knowledge Service chỉ trả citation ID và excerpt sau khi lọc tenant và ACL.
 
-## 6. Reliability patterns
+## 6. Mẫu thiết kế bảo đảm độ tin cậy
 
 ### Transactional outbox
 
-Ticket Service writes the ticket change and outbox row in the same transaction. A publisher job claims unpublished rows using `FOR UPDATE SKIP LOCKED`, publishes them and marks them published.
+Ticket Service ghi thay đổi ticket và outbox row trong cùng transaction. Publisher claim các row
+chưa phát bằng `FOR UPDATE SKIP LOCKED`, gửi chúng rồi đánh dấu đã phát.
 
 ### Idempotent consumer
 
-Each consumer inserts `(consumer_name, event_id)` into `processed_event`. A unique constraint ensures one logical application. Business changes and processed marker are committed atomically.
+Mỗi consumer chèn `(consumer_name, event_id)` vào `processed_event`. Unique constraint bảo đảm một
+event chỉ được áp dụng logic một lần. Business change và processed marker được commit nguyên tử.
 
 ### Circuit breaker
 
-AI Orchestrator opens the provider circuit after 50% failures in a 20-call sliding window, minimum 10 calls. Open duration is 30 seconds. During open state, jobs become `RETRY_SCHEDULED`; core APIs remain healthy.
+AI Orchestrator mở circuit của provider khi tỷ lệ lỗi đạt 50% trong sliding window 20 lần gọi, tối
+thiểu 10 lần. Circuit mở 30 giây. Trong thời gian này job chuyển thành `RETRY_SCHEDULED`, còn core API
+vẫn hoạt động bình thường.
 
-### Dead-letter handling
+### Xử lý dead letter
 
-After five broker deliveries, route messages to a service-specific DLQ. Alert when any DLQ contains messages for more than five minutes. Replay requires an operator command with original event ID preserved.
+Sau năm lần broker delivery, message được chuyển tới DLQ riêng của service. Cảnh báo nếu DLQ có
+message quá năm phút. Replay cần lệnh của operator và phải giữ nguyên event ID ban đầu.
 
-## 7. Deployment topology
+## 7. Mô hình triển khai
 
-Minimum production topology:
+Mô hình production tối thiểu:
 
-- Two instances each for stateless REST services behind a load balancer.
-- Two Worker instances with configurable concurrency.
-- Managed PostgreSQL with separate database and credential per service.
-- Managed RabbitMQ with durable quorum queues.
-- Redis with persistence disabled unless used for durable functions.
-- S3-compatible versioned bucket with server-side encryption.
-- Central OpenTelemetry Collector.
+- Hai instance cho mỗi stateless REST service sau load balancer.
+- Hai Worker instance với concurrency có thể cấu hình.
+- PostgreSQL được quản lý, database và credential tách riêng theo service.
+- RabbitMQ được quản lý với durable quorum queue.
+- Redis tắt persistence nếu không dùng cho chức năng cần độ bền dữ liệu.
+- Bucket tương thích S3, bật versioning và mã hóa phía server.
+- OpenTelemetry Collector tập trung.
 
-## 8. Architecture decisions
+## 8. Các quyết định kiến trúc
 
-| Decision | Choice | Rationale |
+| Quyết định | Lựa chọn | Lý do |
 |---|---|---|
-| AI framework | Spring AI behind an internal adapter | Matches Java/Spring skill set and prevents provider leakage |
-| Vector store | PostgreSQL + pgvector | Low operational overhead and familiar SQL tooling |
-| Async broker | RabbitMQ | Clear routing/retry/DLQ semantics for portfolio scale |
-| Consistency | Eventual for AI results | AI is non-critical and long-running |
-| Token format | RS256 JWT | Services verify without sharing signing secret |
-| API errors | RFC 9457-style problem JSON | One machine-readable error format |
-
+| AI framework | Spring AI sau internal adapter | Phù hợp kỹ năng Java/Spring và không để lộ provider vào nghiệp vụ |
+| Vector store | PostgreSQL + pgvector | Chi phí vận hành thấp, công cụ SQL quen thuộc |
+| Async broker | RabbitMQ | Routing/retry/DLQ rõ ràng ở quy mô portfolio |
+| Tính nhất quán | Eventual consistency cho kết quả AI | AI không thuộc critical path và chạy lâu |
+| Định dạng token | RS256 JWT | Service xác minh mà không dùng chung signing secret |
+| Lỗi API | Problem JSON theo RFC 9457 | Một định dạng lỗi máy có thể đọc |

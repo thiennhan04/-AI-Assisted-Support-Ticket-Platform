@@ -1,14 +1,13 @@
-# Ticket Service - Detail Design
+# Thiết kế chi tiết Ticket Service
 
-## 1. Responsibilities
+## 1. Trách nhiệm
 
-- Ticket lifecycle, assignment, comments and attachment metadata.
-- Authorization and tenant isolation.
-- Audit log and optimistic concurrency.
+- Vòng đời ticket, assignment, comment và attachment metadata.
+- Phân quyền, cô lập tenant, audit log và optimistic concurrency.
 - Transactional outbox.
-- Read projection of AI analysis/drafts for UI.
+- Bản chiếu AI analysis/draft để UI đọc.
 
-## 2. Package structure
+## 2. Cấu trúc package
 
 ```text
 com.portfolio.ticket
@@ -33,119 +32,108 @@ com.portfolio.ticket
     security
 ```
 
-### Authenticated caller
+### Caller đã xác thực
 
-Ticket Service is an OAuth2 Resource Server. It accepts only RS256 access tokens issued by the
-configured Identity Service, resolves signing keys from `JWKS_URI`, and validates `iss`, `aud`,
-`exp`, `sub`, `tid`, and `roles`. Verified claims are converted to
-`com.portfolio.ticket.application.AuthenticatedPrincipal`; application code must derive tenant and
-user identity from this principal, never from request input. Controller role checks use
-`ROLE_CUSTOMER`, `ROLE_AGENT`, and `ROLE_ADMIN` authorities.
+Ticket Service là OAuth2 Resource Server, chỉ nhận RS256 access token do Identity Service cấu hình
+phát hành. Service lấy signing key từ `JWKS_URI`, kiểm tra `iss`, `aud`, `exp`, `sub`, `tid`, `roles`
+rồi chuyển claim thành `AuthenticatedPrincipal`. Application luôn lấy tenant/user từ principal,
+không lấy từ request. Controller dùng authority `ROLE_CUSTOMER`, `ROLE_AGENT`, `ROLE_ADMIN`.
 
-User access tokens are denied on `/internal/**`; service-to-service authentication will be added
-with the internal API implementation.
+Token người dùng bị từ chối tại `/internal/**`; service identity sẽ được bổ sung cùng internal API.
 
-## 3. Domain commands
+## 3. Domain command
 
-| Command | Allowed roles | Main validation |
+| Command | Role được phép | Kiểm tra chính |
 |---|---|---|
-| CreateTicket | authenticated | requester is caller unless Agent/Admin |
-| UpdateContent | requester while OPEN, Agent/Admin | expected version required |
-| AssignTicket | Agent/Admin | assignee is active agent in tenant |
-| ChangeStatus | depends on transition | state-machine rule |
-| AddComment | ticket participant/Admin | non-empty, <= 10,000 chars |
-| RequestAiDraft | Agent/Admin | ticket not CLOSED, sufficient content |
-| ApproveAiDraft | Agent/Admin | draft exists and unchanged |
+| CreateTicket | đã xác thực | requester là caller, trừ Agent/Admin |
+| UpdateContent | requester khi OPEN, Agent/Admin | cần expected version |
+| AssignTicket | Agent/Admin | assignee là active agent cùng tenant |
+| ChangeStatus | tùy transition | state-machine rule |
+| AddComment | participant/Admin | không rỗng, <= 10.000 ký tự |
+| RequestAiDraft | Agent/Admin | ticket chưa CLOSED, đủ nội dung |
+| ApproveAiDraft | Agent/Admin | draft tồn tại và chưa thay đổi |
 
-## 4. API behavior
+## 4. Hành vi API
 
-### Create
+### Tạo ticket
 
-`POST /v1/tickets` requires `Idempotency-Key` UUID. Store request hash and response reference for 24 hours. Reusing a key with different body returns `409 IDEMPOTENCY_KEY_REUSED`.
+`POST /v1/tickets` yêu cầu UUID `Idempotency-Key`. Request hash và response reference được lưu 24
+giờ. Dùng lại key với body khác trả `409 IDEMPOTENCY_KEY_REUSED`. Ticket number gồm prefix theo tenant
+và sequence zero-padded như `SUP-00001234`; UUID vẫn là ID chuẩn.
 
-Ticket number format: tenant-configurable prefix plus zero-padded sequence, e.g. `SUP-00001234`. Internal UUID remains canonical identifier.
+### Truy vấn
 
-### Query
+`GET /v1/tickets` hỗ trợ `status`, `priority`, `category`, `assigneeId`, `requesterId`, `createdFrom`,
+`createdTo`, `q`, `page`, `size`, `sort`; size tối đa 50. CUSTOMER luôn chỉ thấy ticket của mình.
 
-`GET /v1/tickets` supports `status`, `priority`, `category`, `assigneeId`, `requesterId`, `createdFrom`, `createdTo`, `q`, `page`, `size`, `sort`. Maximum size 50. CUSTOMER queries are always restricted to caller's tickets.
+### Cập nhật
 
-### Update
+Mọi mutable command nhận `If-Match: "<version>"`. Thiếu header trả `428 PRECONDITION_REQUIRED`;
+version cũ trả `412 TICKET_VERSION_CONFLICT` kèm current version.
 
-Every mutable command accepts `If-Match: "<version>"`. Missing header returns `428 PRECONDITION_REQUIRED`; stale version returns `412 TICKET_VERSION_CONFLICT` with current version.
+### Endpoint AI
 
-### AI endpoints
-
-- `POST /v1/tickets/{id}/ai-analysis/retry` -> `202`.
-- `POST /v1/tickets/{id}/ai-drafts` -> `202 { jobId, status }`.
+- `POST /v1/tickets/{id}/ai-analysis/retry` → `202`.
+- `POST /v1/tickets/{id}/ai-drafts` → `202 { jobId, status }`.
 - `GET /v1/tickets/{id}/ai-drafts/{draftId}`.
-- `POST /v1/tickets/{id}/ai-drafts/{draftId}/approve` creates a normal agent comment from editable request content.
-- `POST /v1/tickets/{id}/ai-feedback` records rating/reason through an event.
+- `POST /v1/tickets/{id}/ai-drafts/{draftId}/approve` tạo comment thường từ nội dung có thể sửa.
+- `POST /v1/tickets/{id}/ai-feedback` ghi rating/reason qua event.
 
-## 5. Persistence and indexes
+## 5. Persistence và index
 
-Primary tables: `ticket`, `ticket_comment`, `ticket_attachment`, `ticket_ai_analysis`, `ticket_ai_draft`, `ticket_audit`, `idempotency_record`, `outbox_event`, `processed_event`.
+Bảng chính: `ticket`, `ticket_comment`, `ticket_attachment`, `ticket_ai_analysis`, `ticket_ai_draft`,
+`ticket_audit`, `idempotency_record`, `outbox_event`, `processed_event`.
 
-Required indexes:
+Index bắt buộc: `(tenant_id, status, updated_at desc)`, `(tenant_id, assignee_id, status)`,
+`(tenant_id, requester_id, created_at desc)`, GIN full-text trên subject/description và unique
+`(tenant_id, ticket_number)`.
 
-- `(tenant_id, status, updated_at desc)`.
-- `(tenant_id, assignee_id, status)`.
-- `(tenant_id, requester_id, created_at desc)`.
-- GIN full-text index on subject/description for PostgreSQL search.
-- Unique `(tenant_id, ticket_number)`.
+## 6. Chiếu event
 
-## 6. Event projection
+Khi nhận `ai.analysis.completed.v1`:
 
-On `ai.analysis.completed.v1`:
+1. Chèn `processed_event`, kết thúc thành công nếu trùng.
+2. Xác nhận tenant và ticket tồn tại.
+3. Upsert analysis theo `ai_job_id`.
+4. Không ghi đè category/priority đã chấp nhận.
+5. Thêm audit `AI_ANALYSIS_RECEIVED`.
 
-1. Insert `processed_event`; exit success on duplicate.
-2. Confirm tenant and ticket exist.
-3. Upsert analysis by `ai_job_id`.
-4. Do not overwrite accepted ticket category/priority.
-5. Append audit record `AI_ANALYSIS_RECEIVED`.
+Draft hoàn tất được upsert và trở thành bất biến; nội dung người dùng sửa chỉ đi qua lệnh approve để
+tạo comment.
 
-On draft completion, upsert draft and status. A completed draft is immutable; user edits are passed only when approving as a comment.
+## 7. Luồng attachment
 
-## 7. Attachment flow
+1. `POST /v1/tickets/{id}/attachments/uploads` tạo metadata `PENDING` và signed PUT URL.
+2. Client upload object.
+3. `POST .../{attachmentId}/complete` xác minh size/checksum/content type rồi chuyển `ACTIVE`.
+4. Malware scan có thể giữ `SCANNING`; object chưa scan không được download.
 
-Use signed direct upload:
+## 8. Mã lỗi
 
-1. `POST /v1/tickets/{id}/attachments/uploads` creates `PENDING` metadata and returns signed PUT URL.
-2. Client uploads object.
-3. `POST .../{attachmentId}/complete` verifies size, checksum and content type, then marks `ACTIVE`.
-4. Malware scanning may hold status at `SCANNING`; unscanned objects are never downloadable.
+- `TICKET_NOT_FOUND`: 404 kể cả cross-tenant để tránh enumeration.
+- `TICKET_INVALID_TRANSITION`: 409.
+- `TICKET_VERSION_CONFLICT`: 412.
+- `TICKET_FORBIDDEN`: 403 khi có thể an toàn tiết lộ resource tồn tại.
+- `AI_DRAFT_NOT_READY`: 409.
 
-## 8. Error codes
+## 9. Kiểm thử
 
-- `TICKET_NOT_FOUND` returns 404 even when cross-tenant to avoid enumeration.
-- `TICKET_INVALID_TRANSITION` 409.
-- `TICKET_VERSION_CONFLICT` 412.
-- `TICKET_FORBIDDEN` 403 only when existence may safely be disclosed.
-- `AI_DRAFT_NOT_READY` 409.
+- Mọi transition hợp lệ/không hợp lệ và ma trận role/tenant.
+- Optimistic locking khi cập nhật đồng thời.
+- Idempotent create và replay khác nội dung.
+- Outbox nguyên tử với ticket; bỏ qua AI event trùng.
+- Lỗi AI không làm đổi ticket status.
 
-## 9. Tests
+## 10. Trạng thái triển khai
 
-- All state transitions and invalid transitions.
-- Role/tenant matrix.
-- Optimistic locking under concurrent update.
-- Idempotent create and mismatched replay.
-- Outbox written atomically with ticket.
-- Duplicate AI event ignored.
-- AI failure does not change ticket status.
+DD-201 đã có create/detail/query/filter/pagination/update, state machine, role policy, PostgreSQL và
+Flyway `V001`. Tenant/requester luôn lấy từ JWT principal.
 
-## 10. Delivery status
+DD-202 thêm idempotency 24 giờ theo tenant/requester, ETag, bắt buộc `If-Match` và
+`412 TICKET_VERSION_CONFLICT`; `V002` lưu request hash và ticket gốc.
 
-DD-201 implements ticket creation, detail, tenant-aware query/filter/pagination, update, the ticket
-state machine, role policy, PostgreSQL persistence, and Flyway migration `V001`. Tenant and
-requester identity are always derived from the verified JWT principal; neither can be supplied in
-the request body.
+DD-203 thêm public/internal comment và audit append-only qua `V003`. Customer chỉ thấy public comment
+của ticket mình; Agent/Admin thấy cả hai loại trong tenant. Mutation và audit dùng cùng transaction.
 
-DD-202 adds 24-hour create idempotency scoped to tenant and requester, ETag responses, required
-`If-Match` on updates, and `412 TICKET_VERSION_CONFLICT` for stale writes. Flyway migration `V002`
-stores the create request hash and original ticket reference.
-
-DD-203 adds public/internal append-only comments and append-only audit records through Flyway
-`V003`. Customers see only public comments on their own tickets; Agent/Admin roles see both comment
-types in their tenant. Create, actual field changes, and comments are audited in the same database
-transaction. Transactional outbox publishing remains DD-204. Assignment currently stores an
-authorized Agent/Admin-selected user UUID; validating that the selected user is an active agent in
-the same tenant requires the later Identity user-directory integration.
+DD-204 thêm transactional outbox và RabbitMQ publisher confirm qua `V004`. Việc xác minh assignee là
+active agent cùng tenant chờ Identity user-directory integration.
