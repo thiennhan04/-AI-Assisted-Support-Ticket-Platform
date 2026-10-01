@@ -4,7 +4,6 @@ import com.portfolio.ticket.domain.Ticket;
 import com.portfolio.ticket.domain.TicketPage;
 import com.portfolio.ticket.domain.TicketRepository;
 import com.portfolio.ticket.domain.TicketSearchCriteria;
-import jakarta.persistence.EntityManager;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Predicate;
 import jakarta.persistence.criteria.Root;
@@ -21,37 +20,24 @@ import org.springframework.stereotype.Repository;
 public class JpaTicketRepositoryAdapter implements TicketRepository {
 
     private final TicketSpringDataRepository tickets;
-    private final EntityManager entityManager;
 
-    public JpaTicketRepositoryAdapter(
-            TicketSpringDataRepository tickets, EntityManager entityManager) {
+    public JpaTicketRepositoryAdapter(TicketSpringDataRepository tickets) {
         this.tickets = tickets;
-        this.entityManager = entityManager;
     }
 
     @Override
     public String nextNumber() {
-        Number value =
-                (Number)
-                        entityManager
-                                .createNativeQuery("select nextval('ticket.ticket_number_seq')")
-                                .getSingleResult();
-        return "SUP-%08d".formatted(value.longValue());
+        return "SUP-%08d".formatted(tickets.nextNumberSequenceValue());
     }
 
     @Override
     public Ticket create(Ticket ticket) {
-        var entity = TicketJpaEntity.fromDomain(ticket);
-        entityManager.persist(entity);
-        entityManager.flush();
-        return entity.toDomain();
+        return tickets.saveAndFlush(TicketJpaEntity.fromDomain(ticket)).toDomain();
     }
 
     @Override
     public Ticket save(Ticket ticket) {
-        var saved = tickets.save(TicketJpaEntity.fromDomain(ticket));
-        entityManager.flush();
-        return saved.toDomain();
+        return tickets.saveAndFlush(TicketJpaEntity.fromDomain(ticket)).toDomain();
     }
 
     @Override

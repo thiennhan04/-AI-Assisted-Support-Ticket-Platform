@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.portfolio.ticket.api.dto.AddCommentRequest;
 import com.portfolio.ticket.api.dto.CreateTicketRequest;
@@ -75,6 +76,7 @@ class TicketCrudIT {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
+        registry.add("ticket.outbox.enabled", () -> "false");
         registry.add("debug", () -> "false");
     }
 
@@ -84,6 +86,7 @@ class TicketCrudIT {
 
     @BeforeEach
     void cleanDatabase() {
+        jdbc.update("DELETE FROM ticket.outbox_event");
         jdbc.update("DELETE FROM ticket.ticket_audit");
         jdbc.update("DELETE FROM ticket.ticket_comment");
         jdbc.update("DELETE FROM ticket.idempotency_record");
@@ -135,6 +138,14 @@ class TicketCrudIT {
 
         var ticketId = ticketIdFrom(result.getResponse().getContentAsString());
         assertThat(storedTenantId(ticketId)).isEqualTo(ACME_TENANT_ID);
+        var event = storedTicketCreatedEvent(ticketId);
+        assertThat(event.path("eventType").asText()).isEqualTo("ticket.created.v1");
+        assertThat(event.path("producer").asText()).isEqualTo("ticket-service");
+        assertThat(event.path("schemaVersion").asInt()).isEqualTo(1);
+        assertThat(event.path("tenantId").asText()).isEqualTo(ACME_TENANT_ID.toString());
+        assertThat(event.path("subjectId").asText()).isEqualTo(ticketId.toString());
+        assertThat(event.path("data").path("ticketId").asText()).isEqualTo(ticketId.toString());
+        assertThat(event.path("data").path("contentVersion").asLong()).isZero();
     }
 
     @Test
@@ -154,6 +165,8 @@ class TicketCrudIT {
         assertThat(ticketIdFrom(replay.getResponse().getContentAsString()))
                 .isEqualTo(ticketIdFrom(first.getResponse().getContentAsString()));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket.ticket", Integer.class))
+                .isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ticket.outbox_event", Integer.class))
                 .isEqualTo(1);
     }
 
@@ -440,6 +453,15 @@ class TicketCrudIT {
                 """,
                 String.class,
                 ticketId);
+    }
+
+    private JsonNode storedTicketCreatedEvent(UUID ticketId) throws Exception {
+        var payload =
+                jdbc.queryForObject(
+                        "SELECT payload::text FROM ticket.outbox_event WHERE subject_id = ?",
+                        String.class,
+                        ticketId);
+        return objectMapper.readTree(payload);
     }
 
     private String json(Object value) throws Exception {

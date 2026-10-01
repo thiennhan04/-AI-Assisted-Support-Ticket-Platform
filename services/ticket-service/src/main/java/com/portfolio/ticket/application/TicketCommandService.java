@@ -23,6 +23,7 @@ public class TicketCommandService {
     private final TicketRepository ticketRepository;
     private final TicketHistoryRepository historyRepository;
     private final TicketCreationIdempotencyRepository idempotencyRepository;
+    private final TicketEventOutbox eventOutbox;
     private final TicketAuditRecorder audit;
     private final TicketPolicy policy;
     private final ObjectMapper objectMapper;
@@ -32,12 +33,14 @@ public class TicketCommandService {
             TicketRepository ticketRepository,
             TicketHistoryRepository historyRepository,
             TicketCreationIdempotencyRepository idempotencyRepository,
+            TicketEventOutbox eventOutbox,
             TicketAuditRecorder audit,
             TicketPolicy policy,
             ObjectMapper objectMapper) {
         this.ticketRepository = ticketRepository;
         this.historyRepository = historyRepository;
         this.idempotencyRepository = idempotencyRepository;
+        this.eventOutbox = eventOutbox;
         this.audit = audit;
         this.policy = policy;
         this.objectMapper = objectMapper;
@@ -83,6 +86,7 @@ public class TicketCommandService {
                 created.id(),
                 now,
                 now.plus(Duration.ofHours(24)));
+        eventOutbox.appendTicketCreated(created);
         return created;
     }
 

@@ -8,6 +8,15 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/ticket_db}
     username: ${DB_USERNAME:ticket_service}
     password: ${DB_PASSWORD:local-ticket-db}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:platform}
+    password: ${RABBITMQ_PASSWORD:local-rabbitmq}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
   jpa:
     open-in-view: false
     hibernate:
@@ -21,6 +30,16 @@ security:
     issuer: ${JWT_ISSUER:http://localhost:8081}
     audience: ${JWT_AUDIENCE:ticket-platform}
     jwk-set-uri: ${JWKS_URI:http://localhost:8081/.well-known/jwks.json}
+
+ticket:
+  outbox:
+    enabled: ${OUTBOX_PUBLISHER_ENABLED:true}
+    initial-delay: ${OUTBOX_INITIAL_DELAY_MS:1000}
+    poll-interval: ${OUTBOX_POLL_INTERVAL_MS:1000}
+    batch-size: ${OUTBOX_BATCH_SIZE:20}
+    claim-timeout: ${OUTBOX_CLAIM_TIMEOUT:30s}
+    confirm-timeout: ${OUTBOX_CONFIRM_TIMEOUT:5s}
+    retry-max-delay: ${OUTBOX_RETRY_MAX_DELAY:60s}
 
 management:
   health:
