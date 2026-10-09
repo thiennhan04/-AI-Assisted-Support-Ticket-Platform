@@ -43,12 +43,17 @@ cho đến khi cơ chế xác thực service-to-service được triển khai.
 
 ## 3. Vòng đời document
 
-`UPLOADING -> QUEUED -> PROCESSING -> ACTIVE`, cùng các trạng thái kết thúc/phụ `FAILED`, `DELETING`, `DELETED`. Phiên bản ACTIVE trước đó vẫn có thể tìm kiếm cho đến khi phiên bản thay thế chuyển hoàn toàn sang ACTIVE.
+Phần đã triển khai ở DD-301: [ghi chú upload](../implementation/dd-301-knowledge-upload.md),
+[hướng dẫn Postman](../implementation/dd-301-postman.md).
+Theo quyết định 2026-10-07, upload dùng một request multipart gửi trực tiếp tới Knowledge, không còn signed upload/complete.
+Service xác minh byte thật, tính SHA-256, lưu MinIO rồi ghi `QUEUED` cùng outbox; publisher/consumer được nối ở DD-501.
+API GET metadata hiện chỉ cho ADMIN, không phải endpoint đọc nội dung theo visibility/ACL.
+
+Luồng mới bắt đầu ở `QUEUED -> PROCESSING -> ACTIVE`, cùng trạng thái phụ `FAILED`, `DELETING`, `DELETED`. `UPLOADING` chỉ còn phục vụ lịch sử của bản cũ; migration V002 chuyển reservation cũ chưa hoàn tất sang FAILED/UPLOAD_FLOW_REPLACED. Phiên bản ACTIVE trước đó vẫn có thể tìm kiếm cho đến khi phiên bản thay thế chuyển hoàn toàn sang ACTIVE.
 
 ## 4. Public admin endpoint
 
-- `POST /v1/knowledge/documents/uploads` tạo document/upload URL.
-- `POST /v1/knowledge/documents/{id}/complete` xác minh object và đưa ingestion vào queue.
+- `POST /v1/knowledge/documents` nhận multipart `metadata` (JSON) và `file`, xác minh và trả metadata QUEUED (201).
 - `GET /v1/knowledge/documents` liệt kê document của tenant.
 - `GET /v1/knowledge/documents/{id}` hiển thị version/status/error code.
 - `DELETE /v1/knowledge/documents/{id}` loại khỏi kết quả tìm kiếm đồng bộ và xóa dữ liệu bất đồng bộ.
@@ -106,9 +111,9 @@ Phiên bản đầu có thể chỉ dùng vector search phía sau cùng interfac
 
 Các giá trị visibility:
 
-- `TENANT`: mọi người dùng đã xác thực thuộc tenant.
-- `AGENTS_ONLY`: chỉ Agent/Admin.
-- `RESTRICTED`: role hoặc người dùng được cấp ACL rõ ràng.
+- `ALL_TENANT_USERS`: mọi người dùng đã xác thực thuộc tenant.
+- `SUPPORT_TEAM_ONLY`: chỉ Agent/Admin.
+- `LIMITED_ACCESS`: role hoặc người dùng được cấp ACL rõ ràng.
 
 Điều kiện ACL phải nằm trong truy vấn SQL, không lọc sau khi lấy kết quả vector, nhằm ngăn rò rỉ qua side channel và tránh làm giảm recall.
 

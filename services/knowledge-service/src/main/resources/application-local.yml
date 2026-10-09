@@ -1,0 +1,4 @@
+# Local defaults are defined in application.yml; override credentials with environment variables.
+spring:
+  flyway:
+    enabled: true

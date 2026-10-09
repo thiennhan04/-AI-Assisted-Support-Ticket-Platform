@@ -41,6 +41,13 @@ không được hard-delete sau khi dùng. `model_usage` không chứa raw promp
 
 ## 5. Knowledge database
 
+DD-301 dùng Flyway V001, V002__single_request_upload.sql và V003__rename_document_access_scopes.sql cho `knowledge_document`, `document_version`, `outbox_event`.
+Document giữ `current_version_id`; `active_version_id` vẫn NULL đến khi ingestion kích hoạt.
+`file_name` lấy từ multipart filename đã loại đường dẫn; MIME/size/SHA-256 được xác minh/tính từ byte thật.
+V002 bỏ upload_expires_at và chuyển reservation UPLOADING cũ sang FAILED/UPLOAD_FLOW_REPLACED, không xóa metadata.
+V003 đổi giá trị visibility sang ALL_TENANT_USERS, SUPPORT_TEAM_ONLY, LIMITED_ACCESS và chuyển dữ liệu cũ tương ứng; giữ nguyên tên cột/field visibility.
+Upload mới lưu trực tiếp key `documents/` và trạng thái QUEUED. SHA-256 chỉ có thể NULL ở dữ liệu lịch sử chưa được nhận.
+
 `knowledge_document` là danh tính ổn định. `document_version` biểu diễn mỗi lần ingest/version.
 `document_chunk` thuộc đúng một immutable version. Chỉ chunk thuộc `active_version_id` của document
 được search.

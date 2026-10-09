@@ -1,6 +1,21 @@
 spring:
   application:
     name: knowledge-service
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 26MB
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/knowledge_db}
+    username: ${DB_USERNAME:knowledge_service}
+    password: ${DB_PASSWORD:local-knowledge-db}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
 
 server:
   port: 8084
@@ -10,3 +25,15 @@ security:
     issuer: ${JWT_ISSUER:http://localhost:8081}
     audience: ${JWT_AUDIENCE:ticket-platform}
     jwk-set-uri: ${JWKS_URI:http://localhost:8081/.well-known/jwks.json}
+
+knowledge:
+  storage:
+    endpoint: ${OBJECT_STORE_ENDPOINT:http://localhost:9000}
+    bucket: ${OBJECT_STORE_BUCKET:${MINIO_BUCKET:knowledge}}
+    access-key: ${OBJECT_STORE_ACCESS_KEY:${MINIO_ROOT_USER:platform-minio}}
+    secret-key: ${OBJECT_STORE_SECRET_KEY:${MINIO_ROOT_PASSWORD:local-minio-secret}}
+
+management:
+  health:
+    rabbit:
+      enabled: false

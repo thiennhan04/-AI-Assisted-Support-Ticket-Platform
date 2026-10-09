@@ -56,8 +56,8 @@
 
 ### DD-301 Luồng upload
 
-- Triển khai document metadata, signed upload và xác minh hoàn tất.
-- Chấp nhận: bắt buộc MIME/size/checksum; upload chưa hoàn tất sẽ hết hạn.
+- Theo quyết định người dùng 2026-10-07, thay signed upload/complete bằng một API multipart nhận metadata và file.
+- Chấp nhận: server xác minh MIME/size và tính SHA-256 từ byte thật; chỉ lưu QUEUED cùng outbox sau khi file được nhận. File không rỗng, tối đa 25 MiB; không còn reservation cần hết hạn.
 
 ### DD-302 Trích xuất và chia chunk
 

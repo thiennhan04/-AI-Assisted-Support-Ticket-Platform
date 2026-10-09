@@ -235,9 +235,11 @@ CREATE TABLE knowledge.knowledge_document (
   id uuid PRIMARY KEY,
   tenant_id uuid NOT NULL,
   title varchar(300) NOT NULL,
-  visibility varchar(30) NOT NULL,
+  file_name varchar(255) NOT NULL,
+  visibility varchar(30) NOT NULL CHECK (visibility IN ('ALL_TENANT_USERS', 'SUPPORT_TEAM_ONLY', 'LIMITED_ACCESS')),
   tags jsonb NOT NULL DEFAULT '[]',
   status varchar(30) NOT NULL,
+  current_version_id uuid NOT NULL UNIQUE,
   active_version_id uuid,
   created_by uuid NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
@@ -246,12 +248,12 @@ CREATE TABLE knowledge.knowledge_document (
 
 CREATE TABLE knowledge.document_version (
   id uuid PRIMARY KEY,
-  document_id uuid NOT NULL REFERENCES knowledge.knowledge_document(id),
+  document_id uuid NOT NULL REFERENCES knowledge.knowledge_document(id) DEFERRABLE INITIALLY DEFERRED,
   version_number integer NOT NULL,
   object_key varchar(500) NOT NULL UNIQUE,
   mime_type varchar(150) NOT NULL,
   size_bytes bigint NOT NULL,
-  sha256 char(64) NOT NULL,
+  sha256 char(64),
   status varchar(30) NOT NULL,
   embedding_model varchar(100),
   embedding_dimension integer,
@@ -259,12 +261,15 @@ CREATE TABLE knowledge.document_version (
   error_code varchar(100),
   created_at timestamptz NOT NULL DEFAULT now(),
   activated_at timestamptz,
-  UNIQUE (document_id, version_number)
+  UNIQUE (document_id, version_number),
+  UNIQUE (document_id, id)
 );
 
 ALTER TABLE knowledge.knowledge_document
+  ADD CONSTRAINT fk_knowledge_current_version
+  FOREIGN KEY (id, current_version_id) REFERENCES knowledge.document_version(document_id, id),
   ADD CONSTRAINT fk_knowledge_active_version
-  FOREIGN KEY (active_version_id) REFERENCES knowledge.document_version(id);
+  FOREIGN KEY (id, active_version_id) REFERENCES knowledge.document_version(document_id, id);
 
 CREATE TABLE knowledge.document_acl (
   document_id uuid NOT NULL REFERENCES knowledge.knowledge_document(id) ON DELETE CASCADE,

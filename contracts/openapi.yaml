@@ -267,58 +267,84 @@ paths:
                 reason: {type: string, maxLength: 1000}
       responses:
         '204': {description: Feedback accepted}
-  /v1/knowledge/documents/uploads:
+  /v1/knowledge/documents:
     post:
       tags: [Knowledge]
-      operationId: createDocumentUpload
+      operationId: uploadDocument
+      description: Admin-only single-request upload. Actual MIME, size and SHA-256 are determined by the server. A repeated successful request creates a new document.
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               type: object
-              required: [title, fileName, mimeType, sizeBytes]
+              required: [metadata, file]
               properties:
-                title: {type: string, minLength: 1, maxLength: 300}
-                fileName: {type: string, minLength: 1, maxLength: 255}
-                mimeType: {type: string, enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain]}
-                sizeBytes: {type: integer, minimum: 1, maximum: 26214400}
-                visibility: {type: string, enum: [TENANT, AGENTS_ONLY, RESTRICTED], default: AGENTS_ONLY}
-                tags: {type: array, maxItems: 20, items: {type: string, maxLength: 50}}
+                metadata: {$ref: '#/components/schemas/CreateDocumentRequest'}
+                file:
+                  type: string
+                  format: binary
+                  description: Non-empty PDF, DOCX or UTF-8 text file, maximum 25 MiB
+            encoding:
+              metadata: {contentType: application/json}
       responses:
         '201':
-          description: Upload reservation
+          description: File stored, QUEUED metadata and durable ingestion request saved
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DocumentResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '413':
+          description: File exceeds 25 MiB or multipart request exceeds 26 MiB
+          content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+        '422':
+          description: Actual content is not a supported document format
+          content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+        '503':
+          description: Storage or persistence unavailable, or upload capacity exhausted
+          content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+    get:
+      tags: [Knowledge]
+      operationId: listDocuments
+      description: Admin-only metadata for the authenticated tenant, newest first. No object keys or download URLs are exposed.
+      parameters:
+        - name: page
+          in: query
+          schema: {type: integer, minimum: 0, default: 0}
+        - name: size
+          in: query
+          schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: Current document metadata
           content:
             application/json:
               schema:
-                type: object
-                required: [documentId, uploadUrl, expiresAt]
-                properties:
-                  documentId: {type: string, format: uuid}
-                  uploadUrl: {type: string, format: uri}
-                  expiresAt: {type: string, format: date-time}
+                type: array
+                items: {$ref: '#/components/schemas/DocumentResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
-  /v1/knowledge/documents/{documentId}/complete:
-    post:
+  /v1/knowledge/documents/{documentId}:
+    get:
       tags: [Knowledge]
-      operationId: completeDocumentUpload
+      operationId: getDocument
       parameters:
         - name: documentId
           in: path
           required: true
           schema: {type: string, format: uuid}
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [sha256]
-              properties:
-                sha256: {type: string, pattern: '^[a-f0-9]{64}$'}
       responses:
-        '202': {description: Ingestion queued}
-        '409': {$ref: '#/components/responses/Conflict'}
+        '200':
+          description: Admin-only metadata for a document in the authenticated tenant
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DocumentResponse'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
 components:
   securitySchemes:
     bearerAuth:
@@ -332,6 +358,32 @@ components:
       required: true
       schema: {type: string, format: uuid}
   schemas:
+    CreateDocumentRequest:
+      type: object
+      additionalProperties: false
+      required: [title]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 300}
+        visibility: {type: string, enum: [ALL_TENANT_USERS, SUPPORT_TEAM_ONLY, LIMITED_ACCESS], default: SUPPORT_TEAM_ONLY}
+        tags: {type: array, maxItems: 20, items: {type: string, minLength: 1, maxLength: 50}}
+    DocumentResponse:
+      type: object
+      required: [documentId, title, fileName, visibility, tags, status, versionId, versionNumber, mimeType, sizeBytes, createdAt, updatedAt]
+      properties:
+        documentId: {type: string, format: uuid}
+        title: {type: string}
+        fileName: {type: string}
+        visibility: {type: string, enum: [ALL_TENANT_USERS, SUPPORT_TEAM_ONLY, LIMITED_ACCESS]}
+        tags: {type: array, items: {type: string}}
+        status: {type: string, enum: [UPLOADING, QUEUED, PROCESSING, ACTIVE, FAILED, DELETING, DELETED]}
+        versionId: {type: string, format: uuid}
+        versionNumber: {type: integer, minimum: 1}
+        mimeType: {type: string}
+        sizeBytes: {type: integer, format: int64}
+        sha256: {type: string, nullable: true}
+        errorCode: {type: string, nullable: true}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
     LoginRequest:
       type: object
       required: [tenantCode, email, password]

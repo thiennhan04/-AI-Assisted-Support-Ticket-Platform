@@ -1,6 +1,6 @@
 # Theo dõi task triển khai
 
-Cập nhật lần cuối: 2026-10-01
+Cập nhật lần cuối: 2026-10-09
 
 Milestone tiếp theo: **DD-301 - Luồng upload**
 
@@ -11,9 +11,29 @@ File này theo dõi trạng thái bàn giao. Xem `backlog.md` để biết yêu 
 ## Chú thích trạng thái
 
 - `[x]` Đã hoàn thành, kiểm thử, viết tài liệu, commit và push.
-- `[~]` Đang thực hiện nhưng chưa sẵn sàng commit.
+- `[~]` Đang thực hiện hoặc đã kiểm thử nhưng chưa commit/push.
 - `[ ]` Chưa bắt đầu.
 - `[!]` Bị chặn hoặc cần quyết định.
+
+## Task hiện tại
+
+### DD-301 - Luồng upload Knowledge
+
+Trạng thái: `[~]` Bàn giao code DD-301; còn cần kiểm chứng migration V003 bằng integration test khi Docker hoạt động.
+
+- [x] Metadata/version, JPA Repository và Flyway.
+- [x] Một API multipart upload trực tiếp qua Knowledge, không còn signed URL/complete theo quyết định 2026-10-07.
+- [x] Xác minh byte thật, MIME/size và tính SHA-256 trước khi lưu MinIO.
+- [x] Tenant từ JWT, API quản trị chỉ cho ADMIN.
+- [x] V002 bỏ expiry, giữ metadata cũ và ghi ingestion request cùng transaction với document mới.
+- [x] Đổi enum sang ALL_TENANT_USERS, SUPPORT_TEAM_ONLY, LIMITED_ACCESS; V003 chuyển dữ liệu cũ và constraint, cập nhật API/test/tài liệu.
+- [ ] Kiểm chứng V003 bằng integration test: lần chạy 2026-10-08 unit test 16/16 pass, nhưng Docker chưa hoạt động nên Testcontainers không khởi động được.
+- [x] OpenAPI, ghi chú triển khai và hướng dẫn Postman.
+- [x] `clean verify` Knowledge sau gộp API pass: 16 unit test và 9 integration test, gồm HTTP 413 và migration dữ liệu cũ.
+- [x] Hồi quy toàn monorepo đã pass ngày 2026-10-06 trước khi đổi contract; lần này kiểm thử module Knowledge và shared libs liên quan.
+- [x] Bàn giao commit DD-301 theo yêu cầu ngày 2026-10-09; `clean test` Knowledge và shared libs pass 16 unit test. Docker chưa hoạt động nên chưa xác minh integration test V003.
+
+Ghi chú: [DD-301](dd-301-knowledge-upload.md). Phần publisher/consumer ingestion được nối ở DD-501; chưa có extraction/search.
 
 ## Task vừa hoàn thành
 
@@ -68,7 +88,7 @@ Tiến độ: **4/4**
 
 | Trạng thái | Task | Kết quả dự kiến | Commit |
 |---|---|---|---|
-| [ ] | DD-301 Luồng upload | Metadata, signed upload và xác minh hoàn tất | - |
+| [~] | DD-301 Luồng upload | Một API multipart, xác minh file và metadata QUEUED; chờ xác minh IT V003 | Xem commit DD-301 ngày 2026-10-09 |
 | [ ] | DD-302 Trích xuất và chia chunk | Trích xuất PDF/DOCX/TXT và chunk xác định | - |
 | [ ] | DD-303 Embedding và vector search | Fake/real embedding và pgvector search an toàn theo tenant | - |
 | [ ] | DD-304 Thay thế/xóa phiên bản | Chuyển active version nguyên tử và loại bỏ tức thời | - |

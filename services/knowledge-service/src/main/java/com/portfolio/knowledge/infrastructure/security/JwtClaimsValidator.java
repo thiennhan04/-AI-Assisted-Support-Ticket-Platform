@@ -1,5 +1,6 @@
 package com.portfolio.knowledge.infrastructure.security;
 
+import com.portfolio.knowledge.application.Roles;
 import java.util.Collection;
 import java.util.Set;
 import java.util.UUID;
@@ -11,7 +12,8 @@ import org.springframework.util.StringUtils;
 
 public final class JwtClaimsValidator implements OAuth2TokenValidator<Jwt> {
 
-    private static final Set<String> ALLOWED_ROLES = Set.of("CUSTOMER", "AGENT", "ADMIN");
+    private static final Set<String> ALLOWED_ROLES =
+            Set.of(Roles.CUSTOMER, Roles.AGENT, Roles.ADMIN);
     private static final OAuth2Error INVALID_CLAIMS =
             new OAuth2Error("invalid_token", "Missing or invalid required claims", null);
 

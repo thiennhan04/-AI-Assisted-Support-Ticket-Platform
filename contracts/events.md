@@ -47,6 +47,15 @@ Topic exchange: `platform.domain.x`.
 
 ## 3. Định nghĩa payload
 
+### `knowledge.ingest.requested.v1`
+
+Payload DD-301: `documentId`, `documentVersionId` (UUID); envelope theo contract chung,
+producer `knowledge-service`, subject ID là document ID, tenant lấy từ JWT.
+Schema: [`event-schemas/knowledge.ingest.requested.v1.schema.json`](event-schemas/knowledge.ingest.requested.v1.schema.json).
+Routing key trùng event type. API upload multipart ghi một event cho một version trong cùng transaction
+với trạng thái QUEUED. DD-301 chưa publish trực tiếp tới broker; publisher/consumer được nối ở DD-501.
+Consumer phải deduplicate bằng event ID và lấy metadata/version đúng tenant, không lấy object key từ client.
+
 ### `ticket.created.v1`
 
 Schema: [`event-schemas/ticket.created.v1.schema.json`](event-schemas/ticket.created.v1.schema.json).

@@ -85,7 +85,8 @@ xác thực cùng tenant/ownership của resource.
 - Object key opaque; tên gốc chỉ lưu làm metadata sau khi sanitize.
 - Xác minh SHA-256 và malware scan trước khi activate/download.
 - V1 từ chối file có mật khẩu hoặc mã hóa.
-- Signed URL hết hạn sau 15 phút và chỉ dùng cho đúng object key/content length.
+- Với endpoint có signed URL: hết hạn sau 15 phút, chỉ dùng cho đúng object key/content length.
+- Knowledge DD-301 theo quyết định 2026-10-07 không dùng signed URL: nhận multipart qua service, tự tính MIME/size/SHA-256; giới hạn file 25 MiB và request 26 MiB.
 
 ## 7. Bảo vệ API
 
