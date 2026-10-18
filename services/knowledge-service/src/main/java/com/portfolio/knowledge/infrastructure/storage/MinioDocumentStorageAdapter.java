@@ -3,6 +3,7 @@ package com.portfolio.knowledge.infrastructure.storage;
 import com.portfolio.knowledge.application.DocumentService;
 import com.portfolio.knowledge.application.DocumentStorage;
 import com.portfolio.knowledge.domain.DocumentException;
+import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import java.io.ByteArrayInputStream;
@@ -30,6 +31,24 @@ public class MinioDocumentStorageAdapter implements DocumentStorage {
             MinioClient client, @Value("${knowledge.storage.bucket}") String bucket) {
         this.client = client;
         this.bucket = bucket;
+    }
+
+    @Override
+    public byte[] download(String objectKey) {
+        try (var stream =
+                client.getObject(
+                        GetObjectArgs.builder().bucket(bucket).object(objectKey).build())) {
+            var bytes = stream.readNBytes(Math.toIntExact(DocumentService.MAX_SIZE_BYTES + 1));
+            if (bytes.length > DocumentService.MAX_SIZE_BYTES) {
+                throw new DocumentException(
+                        "UPLOAD_TOO_LARGE", 422, "Stored file exceeds the size limit");
+            }
+            return bytes;
+        } catch (DocumentException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw storageFailure(exception);
+        }
     }
 
     @Override

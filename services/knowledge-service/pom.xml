@@ -11,6 +11,12 @@
   <name>knowledge-service</name>
   <properties><spring-boot.build-image.skip>false</spring-boot.build-image.skip></properties>
   <dependencies>
+    <dependency>
+      <groupId>org.apache.pdfbox</groupId><artifactId>pdfbox</artifactId><version>3.0.7</version>
+      <exclusions><exclusion><groupId>commons-logging</groupId><artifactId>commons-logging</artifactId></exclusion></exclusions>
+    </dependency>
+    <dependency><groupId>org.apache.poi</groupId><artifactId>poi-ooxml</artifactId><version>5.5.1</version></dependency>
+    <dependency><groupId>com.knuddels</groupId><artifactId>jtokkit</artifactId><version>1.1.0</version></dependency>
     <dependency><groupId>io.minio</groupId><artifactId>minio</artifactId><version>8.5.17</version></dependency>
     <dependency><groupId>org.testcontainers</groupId><artifactId>junit-jupiter</artifactId><scope>test</scope></dependency>
     <dependency><groupId>org.testcontainers</groupId><artifactId>postgresql</artifactId><scope>test</scope></dependency>

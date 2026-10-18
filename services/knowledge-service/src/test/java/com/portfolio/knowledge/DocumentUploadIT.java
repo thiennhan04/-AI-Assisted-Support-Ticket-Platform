@@ -1,6 +1,7 @@
 package com.portfolio.knowledge;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.doThrow;
@@ -13,6 +14,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.portfolio.knowledge.application.DocumentChunker;
+import com.portfolio.knowledge.application.IngestionService;
+import com.portfolio.knowledge.domain.Chunk;
 import com.portfolio.knowledge.domain.DocumentException;
 import com.portfolio.knowledge.domain.DocumentRepository;
 import com.portfolio.knowledge.infrastructure.security.PlatformJwtAuthenticationConverter;
@@ -96,6 +100,7 @@ class DocumentUploadIT {
     @Autowired ObjectMapper mapper;
     @Autowired JdbcTemplate jdbc;
     @Autowired MinioClient minio;
+    @Autowired IngestionService ingestion;
     @MockitoSpyBean DocumentRepository documents;
     @MockitoBean JwtDecoder decoder;
     @LocalServerPort int port;
@@ -108,6 +113,195 @@ class DocumentUploadIT {
             minio.makeBucket(MakeBucketArgs.builder().bucket("knowledge-test").build());
         }
         when(decoder.decode("test-token")).thenReturn(jwt(TENANT, "ADMIN"));
+    }
+
+    @Test
+    void ingestionPersistsChunksOnceAndWaitsForEmbeddingBeforeActivation() throws Exception {
+        var response =
+                upload(
+                                TENANT,
+                                "ADMIN",
+                                Map.of("title", "Guide"),
+                                "# Account\n\nReset your password."
+                                        .getBytes(StandardCharsets.UTF_8),
+                                "text/plain")
+                        .andReturn();
+        var body = mapper.readTree(response.getResponse().getContentAsString());
+        var id = UUID.fromString(body.get("documentId").asText());
+        var version = UUID.fromString(body.get("versionId").asText());
+        ingestion.prepare(TENANT, id, version);
+        var original =
+                jdbc.queryForMap(
+                        "SELECT * FROM knowledge.document_chunk WHERE document_version_id = ?",
+                        version);
+        ingestion.prepare(TENANT, id, version);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM knowledge.document_chunk WHERE document_version_id = ?",
+                                Integer.class,
+                                version))
+                .isEqualTo(1);
+        assertThat(original.get("tenant_id")).isEqualTo(TENANT);
+        assertThat(original.get("heading")).isEqualTo("Account");
+        assertThat(original.get("page_number")).isNull();
+        assertThat(original.get("content")).isEqualTo("# Account\n\nReset your password.");
+        assertThat(
+                        jdbc.queryForMap(
+                                "SELECT * FROM knowledge.document_chunk WHERE document_version_id = ?",
+                                version))
+                .isEqualTo(original);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT chunking_version FROM knowledge.document_version WHERE id = ?",
+                                String.class,
+                                version))
+                .isEqualTo(DocumentChunker.CHUNKING_VERSION);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT status FROM knowledge.document_version WHERE id = ?",
+                                String.class,
+                                version))
+                .isEqualTo("PROCESSING");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT active_version_id FROM knowledge.knowledge_document WHERE id = ?",
+                                UUID.class,
+                                id))
+                .isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM knowledge.outbox_event", Integer.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void ingestionDoesNotReadOtherTenantsOrStaleVersions() throws Exception {
+        var response =
+                upload(TENANT, "ADMIN", Map.of("title", "Guide"), TEXT, "text/plain").andReturn();
+        var body = mapper.readTree(response.getResponse().getContentAsString());
+        var id = UUID.fromString(body.get("documentId").asText());
+        var version = UUID.fromString(body.get("versionId").asText());
+        assertThatThrownBy(() -> ingestion.prepare(OTHER_TENANT, id, version))
+                .isInstanceOf(DocumentException.class);
+        assertThatThrownBy(() -> ingestion.prepare(TENANT, id, UUID.randomUUID()))
+                .isInstanceOf(DocumentException.class);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM knowledge.document_chunk", Integer.class))
+                .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT status FROM knowledge.document_version WHERE id = ?",
+                                String.class,
+                                version))
+                .isEqualTo("QUEUED");
+    }
+
+    @Test
+    void emptyExtractionMarksFailedWithoutPersistingChunks() throws Exception {
+        var response =
+                upload(
+                                TENANT,
+                                "ADMIN",
+                                Map.of("title", "Blank"),
+                                " \n\t".getBytes(StandardCharsets.UTF_8),
+                                "text/plain")
+                        .andReturn();
+        var body = mapper.readTree(response.getResponse().getContentAsString());
+        var id = UUID.fromString(body.get("documentId").asText());
+        var version = UUID.fromString(body.get("versionId").asText());
+        assertThatThrownBy(() -> ingestion.prepare(TENANT, id, version))
+                .isInstanceOf(DocumentException.class);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT error_code FROM knowledge.document_version WHERE id = ?",
+                                String.class,
+                                version))
+                .isEqualTo("DOCUMENT_EMPTY");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT status FROM knowledge.knowledge_document WHERE id = ?",
+                                String.class,
+                                id))
+                .isEqualTo("FAILED");
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM knowledge.document_chunk", Integer.class))
+                .isZero();
+    }
+
+    @Test
+    void chunkConstraintFailureRollsBackAllChunksAndPreparedMarker() throws Exception {
+        var response =
+                upload(TENANT, "ADMIN", Map.of("title", "Guide"), TEXT, "text/plain").andReturn();
+        var body = mapper.readTree(response.getResponse().getContentAsString());
+        var id = UUID.fromString(body.get("documentId").asText());
+        var version = UUID.fromString(body.get("versionId").asText());
+        var duplicateOrdinals =
+                List.of(
+                        new Chunk(0, null, null, "first", "a".repeat(64), 1),
+                        new Chunk(0, null, null, "second", "b".repeat(64), 1));
+        assertThatThrownBy(
+                        () ->
+                                documents.saveChunks(
+                                        TENANT,
+                                        id,
+                                        version,
+                                        duplicateOrdinals,
+                                        DocumentChunker.CHUNKING_VERSION,
+                                        Instant.now()))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM knowledge.document_chunk", Integer.class))
+                .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT prepared_at FROM knowledge.document_version WHERE id = ?",
+                                Instant.class,
+                                version))
+                .isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT status FROM knowledge.document_version WHERE id = ?",
+                                String.class,
+                                version))
+                .isEqualTo("QUEUED");
+        ingestion.prepare(TENANT, id, version);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM knowledge.document_chunk", Integer.class))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void concurrentPreparationsPersistOneChunkSet() throws Exception {
+        var response =
+                upload(TENANT, "ADMIN", Map.of("title", "Guide"), TEXT, "text/plain").andReturn();
+        var body = mapper.readTree(response.getResponse().getContentAsString());
+        var id = UUID.fromString(body.get("documentId").asText());
+        var version = UUID.fromString(body.get("versionId").asText());
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var start = new java.util.concurrent.CountDownLatch(1);
+            var tasks = new java.util.ArrayList<java.util.concurrent.Future<?>>();
+            for (int i = 0; i < 2; i++) {
+                tasks.add(
+                        executor.submit(
+                                () -> {
+                                    start.await();
+                                    ingestion.prepare(TENANT, id, version);
+                                    return null;
+                                }));
+            }
+            start.countDown();
+            for (var task : tasks) {
+                task.get(30, java.util.concurrent.TimeUnit.SECONDS);
+            }
+        }
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM knowledge.document_chunk", Integer.class))
+                .isEqualTo(1);
     }
 
     @Test

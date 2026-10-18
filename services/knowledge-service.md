@@ -49,6 +49,11 @@ Theo quyết định 2026-10-07, upload dùng một request multipart gửi tr�
 Service xác minh byte thật, tính SHA-256, lưu MinIO rồi ghi `QUEUED` cùng outbox; publisher/consumer được nối ở DD-501.
 API GET metadata hiện chỉ cho ADMIN, không phải endpoint đọc nội dung theo visibility/ACL.
 
+DD-302 đã có entry point nội bộ IngestionService.prepare(tenantId, documentId, versionId),
+đọc MinIO, kiểm tra size/SHA-256, trích xuất/chuẩn hóa và lưu chunk. Chưa nối consumer/publisher
+(DD-501), không thêm public API kích hoạt xử lý. Chunk đã chuẩn bị giữ PROCESSING với prepared_at,
+chưa ACTIVE cho đến embedding/kích hoạt DD-303/DD-304. Xem [ghi chú DD-302](../implementation/dd-302-extraction-chunking.md).
+
 Luồng mới bắt đầu ở `QUEUED -> PROCESSING -> ACTIVE`, cùng trạng thái phụ `FAILED`, `DELETING`, `DELETED`. `UPLOADING` chỉ còn phục vụ lịch sử của bản cũ; migration V002 chuyển reservation cũ chưa hoàn tất sang FAILED/UPLOAD_FLOW_REPLACED. Phiên bản ACTIVE trước đó vẫn có thể tìm kiếm cho đến khi phiên bản thay thế chuyển hoàn toàn sang ACTIVE.
 
 ## 4. Public admin endpoint

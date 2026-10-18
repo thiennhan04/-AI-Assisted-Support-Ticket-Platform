@@ -43,6 +43,11 @@ class DocumentVersionJpaEntity {
 
     String errorCode;
 
+    @Column(length = 30)
+    String chunkingVersion;
+
+    Instant preparedAt;
+
     @Column(nullable = false)
     Instant createdAt;
 

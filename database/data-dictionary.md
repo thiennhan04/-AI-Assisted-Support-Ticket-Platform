@@ -54,6 +54,13 @@ Upload mới lưu trực tiếp key `documents/` và trạng thái QUEUED. SHA-2
 
 Vector dimension bị ràng buộc bởi schema. Không âm thầm chèn embedding từ model có dimension khác.
 
+DD-302 thêm Flyway V004__document_chunks.sql: document_version có chunking_version và prepared_at;
+document_chunk lưu ordinal từ 0, page_number nullable, heading, content, content_checksum SHA-256,
+token_count và created_at. UNIQUE(version, ordinal) chống chunk trùng; hai composite FK bảo đảm chunk
+thuộc đúng document/version/tenant. Chưa thêm embedding hoặc search_vector vào migration DD-302.
+prepared_at chỉ được ghi cùng transaction lưu đủ chunk. Trạng thái sau chuẩn bị là PROCESSING,
+active_version_id không đổi; chưa được search trước bước embedding/kích hoạt của DD-303/DD-304.
+
 ## 6. Chiến lược migration
 
 - Mỗi service sở hữu `V001__baseline.sql`, các forward migration sau đó và Flyway history.

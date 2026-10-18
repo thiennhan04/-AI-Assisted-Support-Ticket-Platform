@@ -1,8 +1,8 @@
 # Theo dõi task triển khai
 
-Cập nhật lần cuối: 2026-10-09
+Cập nhật lần cuối: 2026-10-18
 
-Milestone tiếp theo: **DD-301 - Luồng upload**
+Milestone hiện tại: **DD-302 - Trích xuất và chia chunk**
 
 Hoàn thành: **9/24 task (38%)**
 
@@ -16,6 +16,22 @@ File này theo dõi trạng thái bàn giao. Xem `backlog.md` để biết yêu 
 - `[!]` Bị chặn hoặc cần quyết định.
 
 ## Task hiện tại
+
+### DD-302 - Trích xuất và chia chunk
+
+Trạng thái: `[~]` Đã triển khai và bàn giao commit ngày 2026-10-18; chưa push, còn kiểm chứng integration test khi Docker hoạt động.
+
+- [x] PDF/DOCX/TXT extractor, giữ trang/heading khi có thông tin và chuẩn hóa Unicode/khoảng trắng.
+- [x] Chunker CL100K_BASE mục tiêu 700 token, overlap tối đa 100, trần 1.000; checksum xác định.
+- [x] IngestionService nội bộ kiểm tra size/SHA-256, lưu chunk bằng JPA và migration V004.
+- [x] Chunk + prepared_at cùng transaction, khóa commit chống trùng; chưa kích hoạt ACTIVE.
+- [x] File rỗng/mã hóa/hỏng thất bại an toàn; lỗi storage giữ QUEUED để retry.
+- [x] Unit test Knowledge pass 42 test; clean test toàn monorepo pass 67 test ngày 2026-10-10.
+- [x] Root verify -DskipITs pass: compiler/Enforcer/formatter/unit test/đóng gói; chưa phải full verify.
+- [ ] Integration test PostgreSQL/MinIO: Docker engine chưa kết nối được.
+- [ ] Commit/push khi người dùng yêu cầu.
+
+Ghi chú: [DD-302](dd-302-extraction-chunking.md). Chưa thêm public API; nối event ở DD-501, embedding ở DD-303.
 
 ### DD-301 - Luồng upload Knowledge
 
@@ -89,7 +105,7 @@ Tiến độ: **4/4**
 | Trạng thái | Task | Kết quả dự kiến | Commit |
 |---|---|---|---|
 | [~] | DD-301 Luồng upload | Một API multipart, xác minh file và metadata QUEUED; chờ xác minh IT V003 | Xem commit DD-301 ngày 2026-10-09 |
-| [ ] | DD-302 Trích xuất và chia chunk | Trích xuất PDF/DOCX/TXT và chunk xác định | - |
+| [~] | DD-302 Trích xuất và chia chunk | Extractor, chunker và lưu JPA; unit test pass, chờ IT | Commit DD-302 ngày 2026-10-18; chưa push |
 | [ ] | DD-303 Embedding và vector search | Fake/real embedding và pgvector search an toàn theo tenant | - |
 | [ ] | DD-304 Thay thế/xóa phiên bản | Chuyển active version nguyên tử và loại bỏ tức thời | - |
 
