@@ -11,6 +11,7 @@
   <name>knowledge-service</name>
   <properties><spring-boot.build-image.skip>false</spring-boot.build-image.skip></properties>
   <dependencies>
+    <dependency><groupId>org.hibernate.orm</groupId><artifactId>hibernate-vector</artifactId><version>${hibernate.version}</version></dependency>
     <dependency>
       <groupId>org.apache.pdfbox</groupId><artifactId>pdfbox</artifactId><version>3.0.7</version>
       <exclusions><exclusion><groupId>commons-logging</groupId><artifactId>commons-logging</artifactId></exclusion></exclusions>

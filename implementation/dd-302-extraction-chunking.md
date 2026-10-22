@@ -96,6 +96,10 @@ rollback và hai lần chuẩn bị đồng thời. Task chưa đánh dấu hoà
 
 ## Nguồn thư viện
 
+Cập nhật 2026-10-18: đã chạy lại integration test cùng DD-303 trên PostgreSQL/MinIO thật.
+Đã sửa lazy-loading bằng EntityGraph/join fetch trong DocumentSpringDataRepository.
+Toàn bộ 19 integration test Knowledge pass, gồm các tình huống DD-301/DD-302 và migration V001→V005.
+
 - [PDFBox API](https://pdfbox.apache.org/3.0/migration.html)
 - [Apache POI](https://poi.apache.org/)
 - [JTokkit](https://github.com/knuddelsgmbh/jtokkit)

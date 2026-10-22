@@ -14,11 +14,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.portfolio.knowledge.application.AuthenticatedPrincipal;
 import com.portfolio.knowledge.application.DocumentChunker;
+import com.portfolio.knowledge.application.EmbeddingPort;
+import com.portfolio.knowledge.application.IndexingService;
 import com.portfolio.knowledge.application.IngestionService;
+import com.portfolio.knowledge.application.SearchService;
 import com.portfolio.knowledge.domain.Chunk;
 import com.portfolio.knowledge.domain.DocumentException;
 import com.portfolio.knowledge.domain.DocumentRepository;
+import com.portfolio.knowledge.domain.KnowledgeIndexRepository;
 import com.portfolio.knowledge.infrastructure.security.PlatformJwtAuthenticationConverter;
 import io.minio.BucketExistsArgs;
 import io.minio.GetObjectArgs;
@@ -101,6 +106,10 @@ class DocumentUploadIT {
     @Autowired JdbcTemplate jdbc;
     @Autowired MinioClient minio;
     @Autowired IngestionService ingestion;
+    @Autowired IndexingService indexing;
+    @Autowired SearchService search;
+    @Autowired KnowledgeIndexRepository knowledgeIndex;
+    @Autowired EmbeddingPort embedding;
     @MockitoSpyBean DocumentRepository documents;
     @MockitoBean JwtDecoder decoder;
     @LocalServerPort int port;
@@ -113,6 +122,244 @@ class DocumentUploadIT {
             minio.makeBucket(MakeBucketArgs.builder().bucket("knowledge-test").build());
         }
         when(decoder.decode("test-token")).thenReturn(jwt(TENANT, "ADMIN"));
+    }
+
+    @Test
+    void activationDatabaseFailureRollsBackAllVectorsAndActivePointer() throws Exception {
+        var id =
+                searchableDocument(TENANT, "Rollback", "ALL_TENANT_USERS", "password reset", false);
+        var version =
+                jdbc.queryForObject(
+                        "SELECT current_version_id FROM knowledge.knowledge_document WHERE id = ?",
+                        UUID.class,
+                        id);
+        jdbc.execute(
+                "ALTER TABLE knowledge.document_version ADD CONSTRAINT test_reject_active CHECK (status <> 'ACTIVE') NOT VALID");
+        try {
+            assertThatThrownBy(() -> indexing.index(TENANT, id, version))
+                    .isInstanceOf(org.springframework.dao.DataAccessException.class);
+        } finally {
+            jdbc.execute(
+                    "ALTER TABLE knowledge.document_version DROP CONSTRAINT test_reject_active");
+        }
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM knowledge.document_chunk WHERE document_version_id = ? AND embedding IS NOT NULL",
+                                Integer.class,
+                                version))
+                .isZero();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT active_version_id FROM knowledge.knowledge_document WHERE id = ?",
+                                UUID.class,
+                                id))
+                .isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT status FROM knowledge.document_version WHERE id = ?",
+                                String.class,
+                                version))
+                .isEqualTo("PROCESSING");
+        indexing.index(TENANT, id, version);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT active_version_id FROM knowledge.knowledge_document WHERE id = ?",
+                                UUID.class,
+                                id))
+                .isEqualTo(version);
+    }
+
+    @Test
+    void indexingActivatesWholeVersionAndDuplicateDeliveryIsANoOp() throws Exception {
+        var id =
+                searchableDocument(
+                        TENANT, "Account", "ALL_TENANT_USERS", "password reset account", true);
+        var version =
+                jdbc.queryForObject(
+                        "SELECT active_version_id FROM knowledge.knowledge_document WHERE id = ?",
+                        UUID.class,
+                        id);
+        var before =
+                jdbc.queryForObject(
+                        "SELECT activated_at FROM knowledge.document_version WHERE id = ?",
+                        java.sql.Timestamp.class,
+                        version);
+        indexing.index(TENANT, id, version);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT activated_at FROM knowledge.document_version WHERE id = ?",
+                                java.sql.Timestamp.class,
+                                version))
+                .isEqualTo(before);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT embedding_dimension FROM knowledge.document_version WHERE id = ?",
+                                Integer.class,
+                                version))
+                .isEqualTo(1536);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM knowledge.document_chunk WHERE document_version_id = ? AND embedding IS NOT NULL",
+                                Integer.class,
+                                version))
+                .isEqualTo(1);
+    }
+
+    @Test
+    void cosineSearchFiltersTenantActiveVersionVisibilityUserAndRoleAclBeforeRanking()
+            throws Exception {
+        var common =
+                searchableDocument(
+                        TENANT, "Common", "ALL_TENANT_USERS", "password reset account", true);
+        var staff =
+                searchableDocument(
+                        TENANT, "Staff", "SUPPORT_TEAM_ONLY", "password reset account", true);
+        var restricted =
+                searchableDocument(
+                        TENANT, "Restricted", "LIMITED_ACCESS", "password reset account", true);
+        searchableDocument(
+                OTHER_TENANT,
+                "Other tenant secret",
+                "ALL_TENANT_USERS",
+                "password reset account",
+                true);
+        searchableDocument(
+                TENANT, "Not active", "ALL_TENANT_USERS", "password reset account", false);
+        var customerId = UUID.randomUUID();
+        var customer = new AuthenticatedPrincipal(customerId, TENANT, java.util.Set.of("CUSTOMER"));
+        var matches = search.search(customer, "password reset", 20, List.of());
+        assertThat(matches)
+                .extracting(KnowledgeIndexRepository.SearchMatch::documentId)
+                .containsExactly(common);
+        var agent =
+                new AuthenticatedPrincipal(UUID.randomUUID(), TENANT, java.util.Set.of("AGENT"));
+        assertThat(search.search(agent, "password reset", 20, List.of()))
+                .extracting(KnowledgeIndexRepository.SearchMatch::documentId)
+                .containsExactlyInAnyOrder(common, staff);
+        jdbc.update(
+                "INSERT INTO knowledge.document_acl VALUES (?, 'USER', ?)",
+                restricted,
+                customerId.toString());
+        assertThat(search.search(customer, "password reset", 20, List.of()))
+                .extracting(KnowledgeIndexRepository.SearchMatch::documentId)
+                .containsExactlyInAnyOrder(common, restricted);
+        jdbc.update("DELETE FROM knowledge.document_acl WHERE document_id = ?", restricted);
+        jdbc.update("INSERT INTO knowledge.document_acl VALUES (?, 'ROLE', 'AGENT')", restricted);
+        assertThat(search.search(agent, "password reset", 20, List.of()))
+                .extracting(KnowledgeIndexRepository.SearchMatch::documentId)
+                .containsExactlyInAnyOrder(common, staff, restricted);
+        assertThat(search.search(customer, "password reset", 20, List.of("missing"))).isEmpty();
+        assertThat(search.search(customer, "password reset", 20, List.of("account"))).hasSize(1);
+        assertThat(search.search(agent, "password reset", 1, List.of())).hasSize(1);
+        jdbc.update(
+                "UPDATE knowledge.document_version SET embedding_model = 'another-model' WHERE id = (SELECT active_version_id FROM knowledge.knowledge_document WHERE id = ?)",
+                common);
+        assertThat(search.search(customer, "password reset", 20, List.of())).isEmpty();
+    }
+
+    @Test
+    void wrongDimensionActivationRollsBackVectorsAndKeepsPreparedVersionRetryable()
+            throws Exception {
+        var id = searchableDocument(TENANT, "Guide", "ALL_TENANT_USERS", "password reset", false);
+        var version =
+                jdbc.queryForObject(
+                        "SELECT current_version_id FROM knowledge.knowledge_document WHERE id = ?",
+                        UUID.class,
+                        id);
+        var chunk =
+                jdbc.queryForObject(
+                        "SELECT id FROM knowledge.document_chunk WHERE document_version_id = ?",
+                        UUID.class,
+                        version);
+        var bad = List.of(new KnowledgeIndexRepository.ChunkEmbedding(chunk, new float[3]));
+        assertThatThrownBy(
+                        () ->
+                                knowledgeIndex.activate(
+                                        TENANT,
+                                        id,
+                                        version,
+                                        embedding.modelId(),
+                                        bad,
+                                        Instant.now()))
+                .isInstanceOf(DocumentException.class);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT active_version_id FROM knowledge.knowledge_document WHERE id = ?",
+                                UUID.class,
+                                id))
+                .isNull();
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT count(*) FROM knowledge.document_chunk WHERE document_version_id = ? AND embedding IS NOT NULL",
+                                Integer.class,
+                                version))
+                .isZero();
+        indexing.index(TENANT, id, version);
+        assertThat(
+                        jdbc.queryForObject(
+                                "SELECT status FROM knowledge.document_version WHERE id = ?",
+                                String.class,
+                                version))
+                .isEqualTo("ACTIVE");
+    }
+
+    @Test
+    void recallAtFiveOnLocalFixtureMeetsBaseline() throws Exception {
+        var resource =
+                new org.springframework.core.io.ClassPathResource("search/recall-fixture.json");
+        com.fasterxml.jackson.databind.JsonNode fixture;
+        try (var stream = resource.getInputStream()) {
+            fixture = mapper.readTree(stream);
+        }
+        var ids = new java.util.HashMap<String, UUID>();
+        for (var entry : fixture.path("documents")) {
+            var title = entry.path("title").asText();
+            var id =
+                    searchableDocument(
+                            TENANT,
+                            title,
+                            "ALL_TENANT_USERS",
+                            entry.path("content").asText(),
+                            true);
+            ids.put(title, id);
+        }
+        var caller =
+                new AuthenticatedPrincipal(UUID.randomUUID(), TENANT, java.util.Set.of("CUSTOMER"));
+        int found = 0;
+        for (var query : fixture.path("queries")) {
+            var matches = search.search(caller, query.path("query").asText(), 5, List.of());
+            var expected = ids.get(query.path("expected").asText());
+            if (matches.stream().anyMatch(match -> match.documentId().equals(expected))) {
+                found++;
+            }
+        }
+        double recall = (double) found / fixture.path("queries").size();
+        assertThat(recall).isGreaterThanOrEqualTo(1.0);
+    }
+
+    private UUID searchableDocument(
+            UUID tenant, String title, String visibility, String content, boolean activate)
+            throws Exception {
+        var fields =
+                Map.<String, Object>of(
+                        "title", title, "visibility", visibility, "tags", List.of("account"));
+        var response =
+                upload(
+                                tenant,
+                                "ADMIN",
+                                fields,
+                                content.getBytes(StandardCharsets.UTF_8),
+                                "text/plain")
+                        .andReturn();
+        assertThat(response.getResponse().getStatus()).isEqualTo(201);
+        var body = mapper.readTree(response.getResponse().getContentAsString());
+        var id = UUID.fromString(body.path("documentId").asText());
+        var version = UUID.fromString(body.path("versionId").asText());
+        ingestion.prepare(tenant, id, version);
+        if (activate) {
+            indexing.index(tenant, id, version);
+        }
+        return id;
     }
 
     @Test

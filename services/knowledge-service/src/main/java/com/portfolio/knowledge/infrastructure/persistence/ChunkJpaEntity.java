@@ -8,6 +8,7 @@ import jakarta.persistence.Table;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
+import org.hibernate.annotations.Array;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -45,6 +46,11 @@ class ChunkJpaEntity {
 
     @Column(nullable = false)
     Instant createdAt;
+
+    @JdbcTypeCode(SqlTypes.VECTOR)
+    @Array(length = 1536)
+    @Column(columnDefinition = "vector(1536)")
+    float[] embedding;
 
     protected ChunkJpaEntity() {}
 

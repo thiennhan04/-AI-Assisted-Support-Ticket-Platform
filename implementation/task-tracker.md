@@ -1,10 +1,10 @@
 # Theo dõi task triển khai
 
-Cập nhật lần cuối: 2026-10-18
+Cập nhật lần cuối: 2026-10-23
 
-Milestone hiện tại: **DD-302 - Trích xuất và chia chunk**
+                                                                                          Milestone hiện tại: **DD-303 - Embedding và vector search**
 
-Hoàn thành: **9/24 task (38%)**
+Hoàn thành: **10/24 task (42%)**
 
 File này theo dõi trạng thái bàn giao. Xem `backlog.md` để biết yêu cầu và acceptance criteria gốc; không thay thế các yêu cầu đó bằng bản tóm tắt này.
 
@@ -17,9 +17,24 @@ File này theo dõi trạng thái bàn giao. Xem `backlog.md` để biết yêu 
 
 ## Task hiện tại
 
+### DD-303 - Embedding và vector search
+
+Trạng thái: `[~]` Đã triển khai và clean verify thành công ngày 2026-10-18; bàn giao commit DD-303 ngày 2026-10-23, chưa push.
+
+- [x] Fake embedding local và HTTP adapter thật, cùng contract vector 1.536 chiều.
+- [x] Index theo batch 64, kiểm tra toàn bộ kết quả rồi activate nguyên tử; retry không lưu vector dở dang.
+- [x] Hibernate vector/JPA, V005 và truy vấn cosine có tenant/active/model/ACL/tags trong SQL.
+- [x] Internal search dùng service JWT riêng, kiểm tra delegation đã ký và scope knowledge:search.
+- [x] Fixture Recall@5 và test batch lỗi, vector sai, identity giả mạo, ACL và rollback.
+- [x] Clean verify Knowledge/shared libs pass: 56 unit/security test và 19 integration test với PostgreSQL/MinIO thật.
+- [x] Recall@5 fixture fake đạt 1.0; kiểm chứng migration V001→V005 và sửa lazy-loading của DD-302.
+- [ ] Commit/push khi người dùng yêu cầu.
+
+Ghi chú: [DD-303](dd-303-embedding-search.md). Chưa cấp service token từ Identity; workflow tự động nối ở DD-501.
+
 ### DD-302 - Trích xuất và chia chunk
 
-Trạng thái: `[~]` Đã triển khai và bàn giao commit ngày 2026-10-18; chưa push, còn kiểm chứng integration test khi Docker hoạt động.
+Trạng thái: `[~]` Commit b2ed80c chưa push. Đã kiểm chứng integration test ngày 2026-10-18 và sửa truy vấn lazy-loading trong thay đổi DD-303.
 
 - [x] PDF/DOCX/TXT extractor, giữ trang/heading khi có thông tin và chuẩn hóa Unicode/khoảng trắng.
 - [x] Chunker CL100K_BASE mục tiêu 700 token, overlap tối đa 100, trần 1.000; checksum xác định.
@@ -28,14 +43,14 @@ Trạng thái: `[~]` Đã triển khai và bàn giao commit ngày 2026-10-18; ch
 - [x] File rỗng/mã hóa/hỏng thất bại an toàn; lỗi storage giữ QUEUED để retry.
 - [x] Unit test Knowledge pass 42 test; clean test toàn monorepo pass 67 test ngày 2026-10-10.
 - [x] Root verify -DskipITs pass: compiler/Enforcer/formatter/unit test/đóng gói; chưa phải full verify.
-- [ ] Integration test PostgreSQL/MinIO: Docker engine chưa kết nối được.
+- [x] Integration test PostgreSQL/MinIO đã pass cùng DD-303 ngày 2026-10-18; EntityGraph/join fetch tải version trước khi đọc field.
 - [ ] Commit/push khi người dùng yêu cầu.
 
 Ghi chú: [DD-302](dd-302-extraction-chunking.md). Chưa thêm public API; nối event ở DD-501, embedding ở DD-303.
 
 ### DD-301 - Luồng upload Knowledge
 
-Trạng thái: `[~]` Bàn giao code DD-301; còn cần kiểm chứng migration V003 bằng integration test khi Docker hoạt động.
+Trạng thái: `[x]` Commit/push 00e219f; migration V003 đã được kiểm chứng trong clean verify ngày 2026-10-18.
 
 - [x] Metadata/version, JPA Repository và Flyway.
 - [x] Một API multipart upload trực tiếp qua Knowledge, không còn signed URL/complete theo quyết định 2026-10-07.
@@ -43,7 +58,7 @@ Trạng thái: `[~]` Bàn giao code DD-301; còn cần kiểm chứng migration 
 - [x] Tenant từ JWT, API quản trị chỉ cho ADMIN.
 - [x] V002 bỏ expiry, giữ metadata cũ và ghi ingestion request cùng transaction với document mới.
 - [x] Đổi enum sang ALL_TENANT_USERS, SUPPORT_TEAM_ONLY, LIMITED_ACCESS; V003 chuyển dữ liệu cũ và constraint, cập nhật API/test/tài liệu.
-- [ ] Kiểm chứng V003 bằng integration test: lần chạy 2026-10-08 unit test 16/16 pass, nhưng Docker chưa hoạt động nên Testcontainers không khởi động được.
+- [x] Kiểm chứng V003 và dữ liệu cũ bằng integration test ngày 2026-10-18; clean verify V001→V005 pass.
 - [x] OpenAPI, ghi chú triển khai và hướng dẫn Postman.
 - [x] `clean verify` Knowledge sau gộp API pass: 16 unit test và 9 integration test, gồm HTTP 413 và migration dữ liệu cũ.
 - [x] Hồi quy toàn monorepo đã pass ngày 2026-10-06 trước khi đổi contract; lần này kiểm thử module Knowledge và shared libs liên quan.
@@ -104,12 +119,12 @@ Tiến độ: **4/4**
 
 | Trạng thái | Task | Kết quả dự kiến | Commit |
 |---|---|---|---|
-| [~] | DD-301 Luồng upload | Một API multipart, xác minh file và metadata QUEUED; chờ xác minh IT V003 | Xem commit DD-301 ngày 2026-10-09 |
-| [~] | DD-302 Trích xuất và chia chunk | Extractor, chunker và lưu JPA; unit test pass, chờ IT | Commit DD-302 ngày 2026-10-18; chưa push |
-| [ ] | DD-303 Embedding và vector search | Fake/real embedding và pgvector search an toàn theo tenant | - |
+| [x] | DD-301 Luồng upload | Multipart/MinIO/outbox; IT V003 đã pass | 00e219f |
+| [~] | DD-302 Trích xuất và chia chunk | Extractor/chunker/JPA; IT đã pass cùng bản sửa lazy-loading ở DD-303 | b2ed80c; chưa push |
+| [~] | DD-303 Embedding và vector search | Fake/HTTP embedding, pgvector/ACL/service JWT; clean verify pass | Commit DD-303 ngày 2026-10-23; chưa push |
 | [ ] | DD-304 Thay thế/xóa phiên bản | Chuyển active version nguyên tử và loại bỏ tức thời | - |
 
-Tiến độ: **0/4**
+Tiến độ: **1/4**
 
 ## Epic 4 - AI orchestration
 

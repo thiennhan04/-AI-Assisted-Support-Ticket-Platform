@@ -38,8 +38,10 @@ com.portfolio.knowledge
 Knowledge Service tự kiểm tra access token người dùng dùng RS256 bằng JWKS của Identity. Token hợp lệ
 phải có issuer/audience đã cấu hình, các claim UUID `sub`, `tid` và danh sách `roles` đã biết, không rỗng.
 Danh tính đã xác minh được biểu diễn bằng `com.portfolio.knowledge.application.AuthenticatedPrincipal`;
-việc lọc tenant phải dùng `tenantId` từ principal này. Token người dùng bị từ chối tại `/internal/**`
-cho đến khi cơ chế xác thực service-to-service được triển khai.
+việc lọc tenant phải dùng `tenantId` từ principal này. Token người dùng bị từ chối tại `/internal/**`.
+DD-303 dùng chain riêng cho internal search: service JWT RS256, audience knowledge-internal,
+subject ai-orchestrator-service, scope knowledge:search và delegation đã ký tid/principal_id/roles.
+Body phải khớp delegation; Identity chưa cấp token workload, issuer cần được tích hợp ở bước service-to-service.
 
 ## 3. Vòng đời document
 
@@ -68,6 +70,10 @@ Mọi endpoint thay đổi dữ liệu đều yêu cầu role `ADMIN`.
 
 ## 5. Internal search endpoint
 
+DD-303 đã triển khai vector-only exact cosine search, fake/HTTP embedding và kích hoạt version nguyên tử.
+Xem [ghi chú DD-303](../implementation/dd-303-embedding-search.md) và
+[OpenAPI nội bộ](../contracts/knowledge-internal.openapi.yaml). Hybrid/RRF và ANN là mục tiêu tiếp theo.
+
 `POST /internal/v1/knowledge/search`
 
 Request:
@@ -79,7 +85,7 @@ Request:
   "roles": ["AGENT"],
   "query": "customer cannot reset password",
   "topK": 8,
-  "filters": {"tags": ["account"], "locale": "en"}
+  "filters": {"tags": ["account"]}
 }
 ```
 

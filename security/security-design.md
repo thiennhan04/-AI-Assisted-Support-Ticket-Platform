@@ -16,6 +16,10 @@
   phát hiện reuse. Response login/refresh dùng `Cache-Control: no-store`.
 - Xác minh signature, issuer, audience, expiry và claim bắt buộc `sub`/`tid`.
 - Internal endpoint từ chối user token và yêu cầu service identity đúng audience/scope.
+- DD-303 internal search xác minh service JWT riêng: subject ai-orchestrator-service, audience knowledge-internal,
+  scope knowledge:search; tenant/principal/roles phải được issuer ký trong tid/principal_id/roles.
+  Body chỉ được lặp lại đúng delegation, không tự chọn tenant hoặc nâng role. Identity hiện chưa phát hành
+  delegation token; issuer/workload credential được tích hợp khi nối service-to-service.
 - Signing private key chỉ tồn tại trong secret store của Identity Service.
 - Khi rotate key, public key hiện tại và trước đó cùng tồn tại đến khi hết TTL token tối đa.
 

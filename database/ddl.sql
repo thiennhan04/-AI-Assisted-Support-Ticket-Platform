@@ -257,7 +257,7 @@ CREATE TABLE knowledge.document_version (
   sha256 char(64),
   status varchar(30) NOT NULL,
   embedding_model varchar(100),
-  embedding_dimension integer,
+  embedding_dimension integer CHECK (embedding_dimension = 1536),
   chunking_version varchar(30),
   prepared_at timestamptz,
   error_code varchar(100),
@@ -292,15 +292,13 @@ CREATE TABLE knowledge.document_chunk (
   content text NOT NULL,
   content_checksum char(64) NOT NULL,
   token_count integer NOT NULL CHECK (token_count BETWEEN 1 AND 1000),
-  search_vector tsvector GENERATED ALWAYS AS (to_tsvector('simple', content)) STORED,
   embedding vector(1536),
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (document_version_id, ordinal),
   FOREIGN KEY (tenant_id, document_id) REFERENCES knowledge.knowledge_document(tenant_id, id),
   FOREIGN KEY (document_id, document_version_id) REFERENCES knowledge.document_version(document_id, id)
 );
-CREATE INDEX ix_chunk_vector ON knowledge.document_chunk USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX ix_chunk_text ON knowledge.document_chunk USING gin (search_vector);
+-- DD-303 uses exact cosine ranking after tenant/ACL filtering; ANN/full-text indexes are deferred.
 CREATE INDEX ix_chunk_tenant_doc ON knowledge.document_chunk(tenant_id, document_id);
 
 -- Copy this generic table into each service-owned database/schema.

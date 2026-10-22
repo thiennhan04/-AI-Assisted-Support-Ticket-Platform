@@ -1,0 +1,22 @@
+{
+  "documents": [
+    {"title":"Account recovery","content":"Reset a forgotten password using the account recovery email link."},
+    {"title":"Invoices","content":"Download a billing invoice and update the payment card."},
+    {"title":"Two factor authentication","content":"Enable two factor authentication with an authenticator application."},
+    {"title":"Attachments","content":"Upload file attachments to a support ticket."},
+    {"title":"Notifications","content":"Configure email notifications and unsubscribe from alerts."},
+    {"title":"Shipping","content":"Track a shipment delivery and view the parcel tracking number."},
+    {"title":"Refunds","content":"Request a refund for a cancelled purchase order."},
+    {"title":"Profile","content":"Change your display name and profile avatar picture."}
+  ],
+  "queries": [
+    {"query":"forgotten password recovery","expected":"Account recovery"},
+    {"query":"download billing invoice","expected":"Invoices"},
+    {"query":"enable authenticator two factor","expected":"Two factor authentication"},
+    {"query":"upload ticket attachments","expected":"Attachments"},
+    {"query":"unsubscribe notifications alerts","expected":"Notifications"},
+    {"query":"parcel tracking delivery","expected":"Shipping"},
+    {"query":"cancelled purchase refund","expected":"Refunds"},
+    {"query":"display name avatar","expected":"Profile"}
+  ]
+}

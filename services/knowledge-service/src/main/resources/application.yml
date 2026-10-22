@@ -21,12 +21,23 @@ server:
   port: 8084
 
 security:
+  service-jwt:
+    issuer: ${SERVICE_JWT_ISSUER:http://localhost:8081}
+    jwk-set-uri: ${SERVICE_JWKS_URI:http://localhost:8081/.well-known/jwks.json}
+    audience: knowledge-internal
+    subject: ai-orchestrator-service
   jwt:
     issuer: ${JWT_ISSUER:http://localhost:8081}
     audience: ${JWT_AUDIENCE:ticket-platform}
     jwk-set-uri: ${JWKS_URI:http://localhost:8081/.well-known/jwks.json}
 
 knowledge:
+  embedding:
+    provider: ${EMBEDDING_PROVIDER:fake}
+    url: ${EMBEDDING_URL:https://api.openai.com/v1/embeddings}
+    api-key: ${EMBEDDING_API_KEY:}
+    model: ${EMBEDDING_MODEL:text-embedding-3-small}
+    space-id: ${EMBEDDING_SPACE_ID:default}
   storage:
     endpoint: ${OBJECT_STORE_ENDPOINT:http://localhost:9000}
     bucket: ${OBJECT_STORE_BUCKET:${MINIO_BUCKET:knowledge}}

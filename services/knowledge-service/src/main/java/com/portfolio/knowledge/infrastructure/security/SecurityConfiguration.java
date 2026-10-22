@@ -1,8 +1,10 @@
 package com.portfolio.knowledge.infrastructure.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -48,6 +50,38 @@ public class SecurityConfiguration {
     }
 
     @Bean
+    @Order(1)
+    SecurityFilterChain internalSecurityFilterChain(
+            HttpSecurity http,
+            @Value("${security.service-jwt.issuer}") String issuer,
+            @Value("${security.service-jwt.jwk-set-uri}") String jwksUri,
+            @Value("${security.service-jwt.audience}") String audience,
+            @Value("${security.service-jwt.subject}") String subject)
+            throws Exception {
+        var decoderBuilder = NimbusJwtDecoder.withJwkSetUri(jwksUri);
+        decoderBuilder.jwsAlgorithm(SignatureAlgorithm.RS256);
+        var decoder = decoderBuilder.build();
+        var timestampAndIssuer = JwtValidators.createDefaultWithIssuer(issuer);
+        var serviceClaims = new ServiceJwtClaimsValidator(audience, subject);
+        var validators = new DelegatingOAuth2TokenValidator<Jwt>(timestampAndIssuer, serviceClaims);
+        decoder.setJwtValidator(validators);
+        http.securityMatcher("/internal/**");
+        http.csrf(csrf -> csrf.disable());
+        http.sessionManagement(
+                session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
+        http.authorizeHttpRequests(
+                requests ->
+                        requests.requestMatchers("/internal/v1/knowledge/search")
+                                .hasAuthority("SCOPE_knowledge:search")
+                                .anyRequest()
+                                .denyAll());
+        http.oauth2ResourceServer(
+                resourceServer -> resourceServer.jwt(jwt -> jwt.decoder(decoder)));
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
     SecurityFilterChain securityFilterChain(
             HttpSecurity http, PlatformJwtAuthenticationConverter converter) throws Exception {
         return http.csrf(csrf -> csrf.disable())

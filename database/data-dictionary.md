@@ -61,6 +61,12 @@ thuộc đúng document/version/tenant. Chưa thêm embedding hoặc search_vect
 prepared_at chỉ được ghi cùng transaction lưu đủ chunk. Trạng thái sau chuẩn bị là PROCESSING,
 active_version_id không đổi; chưa được search trước bước embedding/kích hoạt của DD-303/DD-304.
 
+DD-303 thêm V005__embedding_search.sql: document_chunk.embedding là vector(1536), NULL trong staging.
+document_version lưu embedding_model, embedding_dimension=1536 và activated_at.
+Chỉ activate khi toàn bộ chunk có vector hợp lệ; active_version_id và các vector commit cùng transaction.
+document_acl cấp quyền USER/ROLE cho LIMITED_ACCESS; ADMIN vẫn cần ACL khi tìm restricted document.
+Search dùng exact cosine sau khi lọc tenant/active/model/ACL/tags, chưa thêm ANN/full-text index.
+
 ## 6. Chiến lược migration
 
 - Mỗi service sở hữu `V001__baseline.sql`, các forward migration sau đó và Flyway history.

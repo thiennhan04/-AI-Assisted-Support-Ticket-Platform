@@ -54,6 +54,8 @@ class DocumentJpaEntity {
     @Column(nullable = false)
     Instant updatedAt;
 
+    UUID activeVersionId;
+
     @OneToOne(cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     @JoinColumn(name = "current_version_id", nullable = false)
     DocumentVersionJpaEntity version;

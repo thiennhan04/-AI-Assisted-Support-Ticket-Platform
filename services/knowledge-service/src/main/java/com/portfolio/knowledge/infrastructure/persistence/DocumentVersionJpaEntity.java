@@ -48,6 +48,13 @@ class DocumentVersionJpaEntity {
 
     Instant preparedAt;
 
+    @Column(length = 100)
+    String embeddingModel;
+
+    Integer embeddingDimension;
+
+    Instant activatedAt;
+
     @Column(nullable = false)
     Instant createdAt;
 
