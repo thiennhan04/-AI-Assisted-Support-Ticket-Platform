@@ -1,8 +1,8 @@
 # Theo dõi task triển khai
 
-Cập nhật lần cuối: 2026-10-23
+Cập nhật lần cuối: 2026-10-24
 
-                                                                                          Milestone hiện tại: **DD-303 - Embedding và vector search**
+                                                                                          Milestone hiện tại: **DD-304 - Thay thế và xóa phiên bản**
 
 Hoàn thành: **10/24 task (42%)**
 
@@ -16,6 +16,23 @@ File này theo dõi trạng thái bàn giao. Xem `backlog.md` để biết yêu 
 - `[!]` Bị chặn hoặc cần quyết định.
 
 ## Task hiện tại
+
+### DD-304 - Thay thế và xóa phiên bản
+
+Trạng thái: `[~]` Đã triển khai và clean verify thành công ngày 2026-10-24; chưa commit/push.
+
+- [x] POST /documents/{id}/versions nhận file, ADMIN cùng tenant và If-Match bắt buộc.
+- [x] Giữ active version cũ khi bản mới QUEUED/PROCESSING/FAILED; chống hai replacement cùng version.
+- [x] Activation chuyển pointer, retire bản cũ và ghi knowledge.document.activated.v1 trong cùng transaction.
+- [x] DELETE loại khỏi search ngay khi commit; cleanup file/chunk bất đồng bộ, không restore document đã xóa.
+- [x] Cleanup có lease/token fencing, retry storage và recovery sau crash, bảo vệ current/active version.
+- [x] V006 thêm file_name theo version, SUPERSEDED và các cột cleanup; giữ metadata tombstone.
+- [x] Bổ sung activeVersionId/documentStatus, cập nhật OpenAPI, event schema và hướng dẫn Postman.
+- [x] Clean verify Knowledge/shared libs pass: 60 unit/security test và 29 integration test PostgreSQL/MinIO thật.
+- [ ] Commit/push khi người dùng yêu cầu.
+
+Ghi chú: [DD-304](dd-304-document-lifecycle.md). Workflow prepare/index vẫn chờ nối event ở DD-501;
+cleanup có scheduler riêng chạy được không cần RabbitMQ.
 
 ### DD-303 - Embedding và vector search
 
@@ -122,7 +139,7 @@ Tiến độ: **4/4**
 | [x] | DD-301 Luồng upload | Multipart/MinIO/outbox; IT V003 đã pass | 00e219f |
 | [~] | DD-302 Trích xuất và chia chunk | Extractor/chunker/JPA; IT đã pass cùng bản sửa lazy-loading ở DD-303 | b2ed80c; chưa push |
 | [~] | DD-303 Embedding và vector search | Fake/HTTP embedding, pgvector/ACL/service JWT; clean verify pass | Commit DD-303 ngày 2026-10-23; chưa push |
-| [ ] | DD-304 Thay thế/xóa phiên bản | Chuyển active version nguyên tử và loại bỏ tức thời | - |
+| [~] | DD-304 Thay thế/xóa phiên bản | Replacement/delete, activation outbox và cleanup lease/retry; clean verify pass | Chưa commit |
 
 Tiến độ: **1/4**
 
@@ -192,3 +209,7 @@ Khi hoàn tất task:
 4. Đổi trạng thái thành `[x]`, thêm commit hash và cập nhật tổng tiến độ.
 
 Chỉ dùng `[!]` khi không thể tiếp tục nếu thiếu quyết định hoặc external dependency, đồng thời ghi lý do chặn ngay cạnh task.
+
+
+promt giải thích source: 
+hãy dựa theo design và đưa ra những đoạn source tương ứng, tôi sẽ đọc theo

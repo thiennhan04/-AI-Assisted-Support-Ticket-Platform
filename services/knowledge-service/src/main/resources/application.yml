@@ -32,6 +32,13 @@ security:
     jwk-set-uri: ${JWKS_URI:http://localhost:8081/.well-known/jwks.json}
 
 knowledge:
+  cleanup:
+    enabled: ${DOCUMENT_CLEANUP_ENABLED:true}
+    grace-period: ${DOCUMENT_VERSION_GRACE_PERIOD:24h}
+    lease-duration: 2m
+    retry-delay: 1m
+    batch-size: 10
+    poll-delay: 30s
   embedding:
     provider: ${EMBEDDING_PROVIDER:fake}
     url: ${EMBEDDING_URL:https://api.openai.com/v1/embeddings}

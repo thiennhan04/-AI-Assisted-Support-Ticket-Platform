@@ -55,6 +55,16 @@ class DocumentVersionJpaEntity {
 
     Instant activatedAt;
 
+    @Column(nullable = false, length = 255)
+    String fileName;
+
+    Instant cleanupAfter;
+    UUID cleanupToken;
+    Instant cleanupLeaseUntil;
+    int cleanupAttempts;
+    String cleanupErrorCode;
+    Instant cleanedAt;
+
     @Column(nullable = false)
     Instant createdAt;
 

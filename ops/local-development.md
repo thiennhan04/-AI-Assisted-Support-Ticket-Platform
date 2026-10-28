@@ -127,7 +127,10 @@ Gọi protected API bằng `Authorization: Bearer <accessToken>`. Mỗi resource
 
 ### Thử Ticket CRUD ở local (DD-201)
 
-Giữ Identity chạy, khởi động PostgreSQL nếu cần và chạy Ticket Service với cấu hình JWT trên. Lấy `accessToken` từ `/v1/auth/login`, sau đó tạo và truy vấn ticket:
+Giữ Identity chạy, khởi động PostgreSQL nếu cần và chạy Ticket Service với profile `local`.
+Profile này kết nối `ticket_db`, dùng JWKS của Identity ở port 8081 và mặc định tắt Outbox
+Publisher để Ticket CRUD không phụ thuộc RabbitMQ. Đặt `OUTBOX_PUBLISHER_ENABLED=true` và chạy
+RabbitMQ khi cần kiểm tra DD-204. Lấy `accessToken` từ `/v1/auth/login`, sau đó tạo và truy vấn ticket:
 
 ```powershell
 $headers = @{

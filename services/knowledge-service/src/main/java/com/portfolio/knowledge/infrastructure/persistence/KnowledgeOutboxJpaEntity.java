@@ -1,6 +1,8 @@
 package com.portfolio.knowledge.infrastructure.persistence;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.portfolio.contracts.EventEnvelope;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -46,4 +48,37 @@ class KnowledgeOutboxJpaEntity {
     Instant publishedAt;
 
     protected KnowledgeOutboxJpaEntity() {}
+
+    static KnowledgeOutboxJpaEntity event(
+            String type,
+            UUID tenantId,
+            UUID documentId,
+            Object data,
+            Instant now,
+            ObjectMapper mapper) {
+        var eventId = UUID.randomUUID();
+        var envelope =
+                new EventEnvelope<>(
+                        eventId,
+                        type,
+                        now,
+                        "knowledge-service",
+                        eventId.toString(),
+                        null,
+                        tenantId,
+                        documentId,
+                        1,
+                        data);
+        var entity = new KnowledgeOutboxJpaEntity();
+        entity.id = eventId;
+        entity.tenantId = tenantId;
+        entity.subjectId = documentId;
+        entity.eventType = type;
+        entity.routingKey = type;
+        entity.payload = mapper.valueToTree(envelope);
+        entity.status = "PENDING";
+        entity.createdAt = now;
+        entity.nextAttemptAt = now;
+        return entity;
+    }
 }

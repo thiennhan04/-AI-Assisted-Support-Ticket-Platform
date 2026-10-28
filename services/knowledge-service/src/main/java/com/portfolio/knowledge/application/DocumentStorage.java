@@ -7,5 +7,7 @@ public interface DocumentStorage {
 
     byte[] download(String objectKey);
 
+    void delete(String objectKey);
+
     record StoredFile(long sizeBytes, String mimeType, String sha256) {}
 }

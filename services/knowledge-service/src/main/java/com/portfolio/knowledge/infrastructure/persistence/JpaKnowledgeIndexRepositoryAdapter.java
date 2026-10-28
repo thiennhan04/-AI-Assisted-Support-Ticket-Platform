@@ -2,6 +2,8 @@ package com.portfolio.knowledge.infrastructure.persistence;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.portfolio.contracts.KnowledgeDocumentActivatedV1;
+import com.portfolio.knowledge.application.DocumentCleanupProperties;
 import com.portfolio.knowledge.application.EmbeddingPort;
 import com.portfolio.knowledge.application.Roles;
 import com.portfolio.knowledge.domain.DocumentException;
@@ -21,14 +23,23 @@ public class JpaKnowledgeIndexRepositoryAdapter implements KnowledgeIndexReposit
     private final DocumentSpringDataRepository documents;
     private final ChunkSpringDataRepository chunks;
     private final ObjectMapper mapper;
+    private final DocumentVersionSpringDataRepository versions;
+    private final KnowledgeOutboxSpringDataRepository outbox;
+    private final DocumentCleanupProperties cleanup;
 
     public JpaKnowledgeIndexRepositoryAdapter(
             DocumentSpringDataRepository documents,
             ChunkSpringDataRepository chunks,
-            ObjectMapper mapper) {
+            ObjectMapper mapper,
+            DocumentVersionSpringDataRepository versions,
+            KnowledgeOutboxSpringDataRepository outbox,
+            DocumentCleanupProperties cleanup) {
         this.documents = documents;
         this.chunks = chunks;
         this.mapper = mapper;
+        this.versions = versions;
+        this.outbox = outbox;
+        this.cleanup = cleanup;
     }
 
     @Override
@@ -93,6 +104,15 @@ public class JpaKnowledgeIndexRepositoryAdapter implements KnowledgeIndexReposit
             entity.embedding = vector.clone();
         }
         chunks.saveAll(entities);
+        var previousVersionId = document.activeVersionId;
+        if (previousVersionId != null && !previousVersionId.equals(versionId)) {
+            var previous =
+                    versions.findByDocumentIdAndId(documentId, previousVersionId)
+                            .orElseThrow(this::notFound);
+            previous.status = DocumentStatus.SUPERSEDED;
+            previous.cleanupAfter = now.plus(cleanup.gracePeriod());
+            versions.save(previous);
+        }
         document.version.embeddingModel = modelId;
         document.version.embeddingDimension = EmbeddingPort.DIMENSIONS;
         document.version.activatedAt = now;
@@ -102,6 +122,16 @@ public class JpaKnowledgeIndexRepositoryAdapter implements KnowledgeIndexReposit
         document.status = DocumentStatus.ACTIVE;
         document.updatedAt = now;
         documents.saveAndFlush(document);
+        var data = new KnowledgeDocumentActivatedV1(documentId, versionId, previousVersionId);
+        var event =
+                KnowledgeOutboxJpaEntity.event(
+                        KnowledgeDocumentActivatedV1.EVENT_TYPE,
+                        tenantId,
+                        documentId,
+                        data,
+                        now,
+                        mapper);
+        outbox.save(event);
     }
 
     @Override

@@ -7,6 +7,9 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
 interface ChunkSpringDataRepository extends JpaRepository<ChunkJpaEntity, UUID> {
+    void deleteByTenantIdAndDocumentIdAndDocumentVersionId(
+            UUID tenantId, UUID documentId, UUID documentVersionId);
+
     List<ChunkJpaEntity> findByTenantIdAndDocumentIdAndDocumentVersionIdOrderByOrdinal(
             UUID tenantId, UUID documentId, UUID documentVersionId);
 

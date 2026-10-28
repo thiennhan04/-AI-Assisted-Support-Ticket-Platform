@@ -67,6 +67,12 @@ Chỉ activate khi toàn bộ chunk có vector hợp lệ; active_version_id và
 document_acl cấp quyền USER/ROLE cho LIMITED_ACCESS; ADMIN vẫn cần ACL khi tìm restricted document.
 Search dùng exact cosine sau khi lọc tenant/active/model/ACL/tags, chưa thêm ANN/full-text index.
 
+DD-304 thêm V006: file_name theo version, trạng thái SUPERSEDED và các field cleanup_after,
+cleanup_token, cleanup_lease_until, cleanup_attempts, cleanup_error_code, cleaned_at.
+SUPERSEDED chỉ phiên bản bị thay thế; current/active pointer không được cleanup khi document chưa xóa.
+Xóa document giữ row tombstone, xóa file/chunk/vector bất đồng bộ và loại bỏ ACL. Unique index outbox
+giới hạn một knowledge.document.activated.v1 cho mỗi documentVersionId.
+
 ## 6. Chiến lược migration
 
 - Mỗi service sở hữu `V001__baseline.sql`, các forward migration sau đó và Flyway history.

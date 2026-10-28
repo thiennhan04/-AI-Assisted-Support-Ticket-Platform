@@ -251,6 +251,7 @@ CREATE TABLE knowledge.document_version (
   id uuid PRIMARY KEY,
   document_id uuid NOT NULL REFERENCES knowledge.knowledge_document(id) DEFERRABLE INITIALLY DEFERRED,
   version_number integer NOT NULL,
+  file_name varchar(255) NOT NULL,
   object_key varchar(500) NOT NULL UNIQUE,
   mime_type varchar(150) NOT NULL,
   size_bytes bigint NOT NULL,
@@ -263,6 +264,12 @@ CREATE TABLE knowledge.document_version (
   error_code varchar(100),
   created_at timestamptz NOT NULL DEFAULT now(),
   activated_at timestamptz,
+  cleanup_after timestamptz,
+  cleanup_token uuid,
+  cleanup_lease_until timestamptz,
+  cleanup_attempts integer NOT NULL DEFAULT 0,
+  cleanup_error_code varchar(100),
+  cleaned_at timestamptz,
   UNIQUE (document_id, version_number),
   UNIQUE (document_id, id)
 );

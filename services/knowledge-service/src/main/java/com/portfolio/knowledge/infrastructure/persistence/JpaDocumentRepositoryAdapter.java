@@ -1,7 +1,6 @@
 package com.portfolio.knowledge.infrastructure.persistence;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.portfolio.contracts.EventEnvelope;
 import com.portfolio.contracts.KnowledgeIngestRequestedV1;
 import com.portfolio.knowledge.domain.Chunk;
 import com.portfolio.knowledge.domain.DocumentException;
@@ -141,31 +140,15 @@ public class JpaDocumentRepositoryAdapter implements DocumentRepository {
 
     @Override
     public void appendIngestionRequested(KnowledgeDocument document, Instant now) {
-        var eventId = UUID.randomUUID();
-        var type = "knowledge.ingest.requested.v1";
         var data = new KnowledgeIngestRequestedV1(document.id(), document.version().id());
-        var envelope =
-                new EventEnvelope<>(
-                        eventId,
-                        type,
-                        now,
-                        "knowledge-service",
-                        eventId.toString(),
-                        null,
+        var entity =
+                KnowledgeOutboxJpaEntity.event(
+                        KnowledgeIngestRequestedV1.EVENT_TYPE,
                         document.tenantId(),
                         document.id(),
-                        1,
-                        data);
-        var entity = new KnowledgeOutboxJpaEntity();
-        entity.id = eventId;
-        entity.tenantId = document.tenantId();
-        entity.subjectId = document.id();
-        entity.eventType = type;
-        entity.routingKey = type;
-        entity.payload = mapper.valueToTree(envelope);
-        entity.status = "PENDING";
-        entity.createdAt = now;
-        entity.nextAttemptAt = now;
+                        data,
+                        now,
+                        mapper);
         outbox.save(entity);
     }
 }

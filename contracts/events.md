@@ -56,6 +56,14 @@ Routing key trùng event type. API upload multipart ghi một event cho một ve
 với trạng thái QUEUED. DD-301 chưa publish trực tiếp tới broker; publisher/consumer được nối ở DD-501.
 Consumer phải deduplicate bằng event ID và lấy metadata/version đúng tenant, không lấy object key từ client.
 
+### `knowledge.document.activated.v1`
+
+DD-304 ghi event cùng transaction lưu vector và chuyển active_version_id.
+Payload: documentId, documentVersionId và previousVersionId (NULL khi kích hoạt lần đầu).
+Schema: [knowledge.document.activated.v1](event-schemas/knowledge.document.activated.v1.schema.json).
+Một version chỉ có một activation event; retry không tạo event mới khi đã ACTIVE.
+Event chưa được publish trong DD-304; phần publisher/consumer nối ở DD-501.
+
 ### `ticket.created.v1`
 
 Schema: [`event-schemas/ticket.created.v1.schema.json`](event-schemas/ticket.created.v1.schema.json).

@@ -70,13 +70,15 @@ class DocumentJpaEntity {
         entity.fileName = document.fileName();
         entity.visibility = document.visibility();
         entity.tags = document.tags();
-        entity.status = document.version().status();
+        entity.status = document.status();
         entity.createdBy = document.createdBy();
         entity.createdAt = document.createdAt();
         entity.updatedAt = document.updatedAt();
+        entity.activeVersionId = document.activeVersionId();
         entity.version =
                 DocumentVersionJpaEntity.from(
                         document.version(), document.id(), document.createdAt());
+        entity.version.fileName = document.fileName();
         return entity;
     }
 
@@ -91,6 +93,8 @@ class DocumentJpaEntity {
                 createdBy,
                 createdAt,
                 updatedAt,
-                version.toDomain());
+                version.toDomain(),
+                activeVersionId,
+                status);
     }
 }

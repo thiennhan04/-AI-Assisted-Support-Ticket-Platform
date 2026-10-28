@@ -53,6 +53,11 @@ public class IngestionService {
             throw new DocumentException(
                     "DOCUMENT_VERSION_CONFLICT", 409, "Document version is no longer current");
         }
+        if (document.status() == DocumentStatus.DELETING
+                || document.status() == DocumentStatus.DELETED) {
+            throw new DocumentException(
+                    "DOCUMENT_DELETED", 409, "Deleted documents cannot be processed");
+        }
         if (documents.isPrepared(tenantId, documentId, versionId)) {
             return;
         }

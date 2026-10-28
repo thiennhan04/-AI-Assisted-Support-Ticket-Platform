@@ -1,12 +1,15 @@
 package com.portfolio.knowledge.infrastructure.storage;
 
+import com.portfolio.knowledge.application.DocumentCleanupProperties;
 import io.minio.MinioClient;
 import java.time.Clock;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@EnableConfigurationProperties(DocumentCleanupProperties.class)
 public class StorageConfiguration {
     @Bean
     Clock clock() {

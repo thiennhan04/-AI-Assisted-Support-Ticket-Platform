@@ -14,7 +14,9 @@ public record KnowledgeDocument(
         UUID createdBy,
         Instant createdAt,
         Instant updatedAt,
-        DocumentVersion version) {
+        DocumentVersion version,
+        UUID activeVersionId,
+        DocumentStatus status) {
 
     public KnowledgeDocument {
         tags = List.copyOf(tags);

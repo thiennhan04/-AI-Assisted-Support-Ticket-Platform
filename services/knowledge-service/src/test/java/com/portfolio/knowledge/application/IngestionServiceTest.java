@@ -63,7 +63,9 @@ class IngestionServiceTest {
                         UUID.randomUUID(),
                         now,
                         now,
-                        version);
+                        version,
+                        null,
+                        DocumentStatus.QUEUED);
         when(documents.find(document.tenantId(), document.id())).thenReturn(Optional.of(document));
         when(storage.download(version.objectKey())).thenReturn(bytes);
         when(extractor.extract(bytes, "text/plain"))

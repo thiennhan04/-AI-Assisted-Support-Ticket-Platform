@@ -290,6 +290,8 @@ paths:
       responses:
         '201':
           description: File stored, QUEUED metadata and durable ingestion request saved
+          headers:
+            ETag: {description: Quoted current file version number for replacement If-Match, schema: {type: string, example: '"1"'}}
           content:
             application/json:
               schema: {$ref: '#/components/schemas/DocumentResponse'}
@@ -328,6 +330,21 @@ paths:
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
   /v1/knowledge/documents/{documentId}:
+    delete:
+      tags: [Knowledge]
+      operationId: deleteDocument
+      description: Admin-only. Immediately hides all versions from search and durably schedules object/chunk cleanup. Repeated deletion is idempotent. Metadata tombstones remain available to administrators.
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+      responses:
+        '202': {description: Search access removed; cleanup accepted or already completed}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '503': {description: Deletion could not be committed; retry later}
     get:
       tags: [Knowledge]
       operationId: getDocument
@@ -338,13 +355,57 @@ paths:
           schema: {type: string, format: uuid}
       responses:
         '200':
-          description: Admin-only metadata for a document in the authenticated tenant
+          description: Admin-only metadata for a document in the authenticated tenant, including deletion tombstones
+          headers:
+            ETag: {description: Quoted current file version number for replacement If-Match, schema: {type: string, example: '"1"'}}
           content:
             application/json:
               schema: {$ref: '#/components/schemas/DocumentResponse'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
         '404': {$ref: '#/components/responses/NotFound'}
+  /v1/knowledge/documents/{documentId}/versions:
+    post:
+      tags: [Knowledge]
+      operationId: replaceDocumentFile
+      description: Stage a replacement file under the same document. Title, visibility and tags are preserved. The previous active version remains searchable until successful activation. One pending version at a time.
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema: {type: string, format: uuid}
+        - name: If-Match
+          in: header
+          required: true
+          description: Quoted current version number returned as ETag by document GET/upload/replacement. This token guards replacement creation, not every status change.
+          schema: {type: string, example: '"1"'}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: {type: string, format: binary, description: PDF/DOCX/UTF-8 text, maximum 25 MiB}
+      responses:
+        '201':
+          description: Replacement QUEUED with an ingestion outbox event; previous active pointer unchanged
+          headers:
+            ETag: {description: Quoted new version number, schema: {type: string, example: '"2"'}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DocumentResponse'}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {description: Document deleted, current version still processing, or version limit reached}
+        '412': {description: Current version changed; reload the document}
+        '413': {description: File exceeds 25 MiB or multipart request exceeds 26 MiB}
+        '422': {description: Unsupported actual file type}
+        '428': {description: If-Match header required}
+        '503': {description: Storage or persistence unavailable}
 components:
   securitySchemes:
     bearerAuth:
@@ -370,12 +431,14 @@ components:
       type: object
       required: [documentId, title, fileName, visibility, tags, status, versionId, versionNumber, mimeType, sizeBytes, createdAt, updatedAt]
       properties:
+        activeVersionId: {type: string, format: uuid, nullable: true, description: Version currently used by search}
+        documentStatus: {type: string, description: Document lifecycle status, including DELETING/DELETED}
         documentId: {type: string, format: uuid}
         title: {type: string}
         fileName: {type: string}
         visibility: {type: string, enum: [ALL_TENANT_USERS, SUPPORT_TEAM_ONLY, LIMITED_ACCESS]}
         tags: {type: array, items: {type: string}}
-        status: {type: string, enum: [UPLOADING, QUEUED, PROCESSING, ACTIVE, FAILED, DELETING, DELETED]}
+        status: {type: string, enum: [UPLOADING, QUEUED, PROCESSING, ACTIVE, FAILED, SUPERSEDED, DELETING, DELETED]}
         versionId: {type: string, format: uuid}
         versionNumber: {type: integer, minimum: 1}
         mimeType: {type: string}

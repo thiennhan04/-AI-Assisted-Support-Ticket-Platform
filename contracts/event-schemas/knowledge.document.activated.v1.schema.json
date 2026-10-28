@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ticket-platform.local/schemas/knowledge.document.activated.v1.schema.json",
+  "title": "knowledge.document.activated.v1",
+  "type": "object",
+  "required": ["eventId", "eventType", "occurredAt", "producer", "correlationId", "tenantId", "subjectId", "schemaVersion", "data"],
+  "properties": {
+    "eventId": {"type": "string", "format": "uuid"},
+    "eventType": {"const": "knowledge.document.activated.v1"},
+    "occurredAt": {"type": "string", "format": "date-time"},
+    "producer": {"const": "knowledge-service"},
+    "correlationId": {"type": "string", "minLength": 1},
+    "causationId": {"type": ["string", "null"], "format": "uuid"},
+    "tenantId": {"type": "string", "format": "uuid"},
+    "subjectId": {"type": "string", "format": "uuid"},
+    "schemaVersion": {"const": 1},
+    "data": {
+      "type": "object",
+      "required": ["documentId", "documentVersionId", "previousVersionId"],
+      "properties": {
+        "documentId": {"type": "string", "format": "uuid"},
+        "documentVersionId": {"type": "string", "format": "uuid"},
+        "previousVersionId": {"type": ["string", "null"], "format": "uuid"}
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

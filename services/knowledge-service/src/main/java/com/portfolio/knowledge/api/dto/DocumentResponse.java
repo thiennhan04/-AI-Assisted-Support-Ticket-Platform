@@ -21,7 +21,9 @@ public record DocumentResponse(
         String sha256,
         String errorCode,
         Instant createdAt,
-        Instant updatedAt) {
+        Instant updatedAt,
+        UUID activeVersionId,
+        DocumentStatus documentStatus) {
 
     public static DocumentResponse from(KnowledgeDocument document) {
         var version = document.version();
@@ -39,6 +41,8 @@ public record DocumentResponse(
                 version.sha256(),
                 version.errorCode(),
                 document.createdAt(),
-                document.updatedAt());
+                document.updatedAt(),
+                document.activeVersionId(),
+                document.status());
     }
 }

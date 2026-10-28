@@ -6,6 +6,7 @@ public enum DocumentStatus {
     PROCESSING,
     ACTIVE,
     FAILED,
+    SUPERSEDED,
     DELETING,
     DELETED
 }

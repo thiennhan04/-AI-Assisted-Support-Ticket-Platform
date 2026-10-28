@@ -28,7 +28,11 @@ class DocumentServiceTest {
     private final AuthenticatedPrincipal admin =
             new AuthenticatedPrincipal(UUID.randomUUID(), UUID.randomUUID(), Set.of("ADMIN"));
     private final DocumentService service =
-            new DocumentService(documents, storage, Clock.fixed(NOW, ZoneOffset.UTC));
+            new DocumentService(
+                    documents,
+                    storage,
+                    Clock.fixed(NOW, ZoneOffset.UTC),
+                    mock(com.portfolio.knowledge.domain.DocumentLifecycleRepository.class));
     private final CreateDocumentRequest request = new CreateDocumentRequest(" Guide ", null, null);
     private final MockMultipartFile file =
             new MockMultipartFile(

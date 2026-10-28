@@ -6,6 +6,7 @@ import com.portfolio.knowledge.domain.DocumentException;
 import io.minio.GetObjectArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.RemoveObjectArgs;
 import java.io.ByteArrayInputStream;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -31,6 +32,16 @@ public class MinioDocumentStorageAdapter implements DocumentStorage {
             MinioClient client, @Value("${knowledge.storage.bucket}") String bucket) {
         this.client = client;
         this.bucket = bucket;
+    }
+
+    @Override
+    public void delete(String objectKey) {
+        var request = RemoveObjectArgs.builder().bucket(bucket).object(objectKey).build();
+        try {
+            client.removeObject(request);
+        } catch (Exception exception) {
+            throw storageFailure(exception);
+        }
     }
 
     @Override

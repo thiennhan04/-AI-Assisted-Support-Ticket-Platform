@@ -63,8 +63,15 @@ Luồng mới bắt đầu ở `QUEUED -> PROCESSING -> ACTIVE`, cùng trạng t
 - `POST /v1/knowledge/documents` nhận multipart `metadata` (JSON) và `file`, xác minh và trả metadata QUEUED (201).
 - `GET /v1/knowledge/documents` liệt kê document của tenant.
 - `GET /v1/knowledge/documents/{id}` hiển thị version/status/error code.
+- `POST /v1/knowledge/documents/{id}/versions` thay file, If-Match là version number đã lấy từ ETag; giữ metadata/ACL.
 - `DELETE /v1/knowledge/documents/{id}` loại khỏi kết quả tìm kiếm đồng bộ và xóa dữ liệu bất đồng bộ.
-- `POST /v1/knowledge/documents/{id}/retry` đưa phiên bản thất bại vào queue lại.
+- `POST /v1/knowledge/documents/{id}/retry` là endpoint dự kiến, chưa triển khai trong DD-304.
+
+DD-304 đã triển khai replacement/delete và cleanup có lease/retry trong DB.
+Kích hoạt version mới ghi outbox knowledge.document.activated.v1 cùng transaction, bản cũ SUPERSEDED
+được dọn sau grace-period mặc định 24 giờ. DELETE loại khỏi search ngay khi commit rồi dọn file/chunk.
+Giữ metadata tombstone; activeVersionId và documentStatus được thêm vào response để phân biệt bản đang search.
+Xem [ghi chú và Postman DD-304](../implementation/dd-304-document-lifecycle.md).
 
 Mọi endpoint thay đổi dữ liệu đều yêu cầu role `ADMIN`.
 
